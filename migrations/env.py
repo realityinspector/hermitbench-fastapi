@@ -16,12 +16,14 @@ from app.db_models import Model, Run, ModelSummary, Batch, Report
 # access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-fileConfig(config.config_file_name)
+# Interpret the config file for Python logging if available
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
 # Set SQLAlchemy URL from environment variable
 sqlalchemy_url = os.getenv("DATABASE_URL")
-config.set_main_option("sqlalchemy.url", sqlalchemy_url)
+if sqlalchemy_url:
+    config.set_main_option("sqlalchemy.url", sqlalchemy_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -44,8 +46,12 @@ def run_migrations_offline():
 
 def run_migrations_online():
     """Run migrations in 'online' mode."""
+    section = config.get_section(config.config_ini_section)
+    if section is None:
+        # If no config section, create one
+        section = {}
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
