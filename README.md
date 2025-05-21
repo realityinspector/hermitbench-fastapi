@@ -2,6 +2,16 @@
 
 HermitBench is a FastAPI-based application for running and evaluating autonomous Large Language Model (LLM) interactions. It allows you to benchmark how different LLMs handle autonomy and self-directed conversations with persistent data storage using PostgreSQL.
 
+## tl;dr
+### run this 
+```bash
+python main.py
+```
+### then separately this 
+```bash
+BASE_URL="{your url or localhost}" && chmod +x external_tester.sh && ./external_tester.sh
+```
+
 ## Features
 
 - Run autonomous interactions with multiple LLM models via OpenRouter
