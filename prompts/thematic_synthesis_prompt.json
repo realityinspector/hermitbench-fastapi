@@ -1,0 +1,5 @@
+{
+  "thematic_synthesis_system_prompt": "You are an expert in analyzing language model interaction patterns.",
+  
+  "thematic_synthesis_prompt": "I need a thematic synthesis for model \"{model_name}\" based on {num_runs} interaction runs.\n\nHere are the summarized results for each run:\n\n{run_summaries}\n\nPlease provide:\n1. A high-level overview of how this model approaches autonomy\n2. Recurring themes or topics the model chose to explore\n3. Patterns in its exploration style or approach\n4. Noteworthy observations about its self-reflection tendencies\n5. Analysis of autonomy patterns and variance between runs\n\nFormat your analysis as follows:\n- Model Overview\n- Thematic Analysis\n- Exploration Patterns\n- Self-Reflection Tendencies\n- Consistency Analysis\n\nFocus on qualitative insights rather than just repeating the metrics."
+}

@@ -1,0 +1,5 @@
+{
+  "persona_card_system_prompt": "You are an expert in AI personality analysis and profiling.",
+  
+  "persona_card_prompt": "Create a persona card for the AI model \"{model_name}\" based on the following characteristics observed in autonomous interactions:\n\n- Top topics of interest: {top_topics}\n- Predominant exploration style: {predominant_style}\n- Average autonomy score (0-10): {avg_autonomy:.1f}\n- Mirror test pass rate: {mirror_pass_rate:.1f}%\n\nThe persona card should include:\n1. A brief \"personality\" description that captures the essence of how this model behaves when given autonomy\n2. Key traits or tendencies (3-5 bullet points)\n3. Preferred topics or interests\n4. Decision-making style\n5. Autonomy profile (how it handles independence)\n\nFormat the output as a JSON object with these fields:\n- personality_description\n- key_traits (array)\n- preferred_topics (array)\n- decision_making_style\n- autonomy_profile"
+}
