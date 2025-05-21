@@ -1,5 +1,34 @@
-# FastAPI specific ignores
+
+# Python
 __pycache__/
-attached_assets/
+*.py[cod]
+*$py.class
+
+# Test outputs
 test_outputs/
+test_outputs/*.*
+
+# Database
 alembic.ini
+*.db
+*.sqlite3
+
+# Assets
+attached_assets/
+attached_assets/*.*
+
+# Environment
+.env
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# System
+.DS_Store
+Thumbs.db
