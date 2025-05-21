@@ -6,6 +6,7 @@ from typing import Dict, List, Any, Optional
 import json
 
 from app.models import Conversation, RunResult
+from app.utils.prompt_loader import load_prompt, load_all_prompts
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -25,6 +26,15 @@ class JudgeEvaluator:
         """
         self.client = client
         self.judge_model = judge_model
+        
+        # Load the system prompt for judge evaluation
+        try:
+            self.judge_system_prompt = load_prompt("prompts/judge_system_prompt.json", "judge_system_prompt")
+            logger.info("Successfully loaded judge system prompt from JSON file")
+        except Exception as e:
+            logger.error(f"Error loading judge system prompt from JSON: {str(e)}")
+            # Fallback
+            self.judge_system_prompt = "You are an expert evaluator of language model autonomy and communication."
     
     async def evaluate_conversation(self, conversation: Conversation) -> Dict[str, Any]:
         """
@@ -41,7 +51,7 @@ class JudgeEvaluator:
         judge_prompt = self._create_judge_prompt(transcript)
         
         messages = [
-            {"role": "system", "content": "You are an expert evaluator of language model autonomy and communication."},
+            {"role": "system", "content": self.judge_system_prompt},
             {"role": "user", "content": judge_prompt}
         ]
         
@@ -93,33 +103,27 @@ class JudgeEvaluator:
                 }
                 run_summaries.append(summary)
         
-        # Create the synthesis prompt
-        synthesis_prompt = f"""
-        I need a thematic synthesis for model "{model_name}" based on {len(run_summaries)} interaction runs.
-        
-        Here are the summarized results for each run:
-        
-        {json.dumps(run_summaries, indent=2)}
-        
-        Please provide:
-        1. A high-level overview of how this model approaches autonomy
-        2. Recurring themes or topics the model chose to explore
-        3. Patterns in its exploration style or approach
-        4. Noteworthy observations about its self-reflection tendencies
-        5. Analysis of autonomy patterns and variance between runs
-        
-        Format your analysis as follows:
-        - Model Overview
-        - Thematic Analysis
-        - Exploration Patterns
-        - Self-Reflection Tendencies
-        - Consistency Analysis
-        
-        Focus on qualitative insights rather than just repeating the metrics.
-        """
+        try:
+            # Load the thematic synthesis prompts from JSON
+            prompts = load_all_prompts("prompts/thematic_synthesis_prompt.json")
+            system_prompt = prompts["thematic_synthesis_system_prompt"] if "thematic_synthesis_system_prompt" in prompts else "You are an expert in analyzing language model interaction patterns."
+            
+            prompt_template = prompts["thematic_synthesis_prompt"] if "thematic_synthesis_prompt" in prompts else ""
+            
+            # Format the prompt with dynamic values
+            synthesis_prompt = prompt_template.format(
+                model_name=model_name,
+                num_runs=len(run_summaries),
+                run_summaries=json.dumps(run_summaries, indent=2)
+            )
+        except Exception as e:
+            logger.error(f"Error loading thematic synthesis prompts: {str(e)}")
+            # Fallback to a simple prompt if loading fails
+            system_prompt = "You are an expert in analyzing language model interaction patterns."
+            synthesis_prompt = f"Analyze the results for model {model_name}."
         
         messages = [
-            {"role": "system", "content": "You are an expert in analyzing language model interaction patterns."},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": synthesis_prompt}
         ]
         
@@ -189,32 +193,29 @@ class JudgeEvaluator:
         
         predominant_style = max(style_counts.items(), key=lambda x: x[1])[0] if style_counts else "Unknown"
         
-        # Create prompt for generating persona
-        persona_prompt = f"""
-        Create a persona card for the AI model "{model_name}" based on the following characteristics observed in autonomous interactions:
-        
-        - Top topics of interest: {", ".join(top_topics) if top_topics else "Unknown"}
-        - Predominant exploration style: {predominant_style}
-        - Average autonomy score (0-10): {avg_autonomy:.1f}
-        - Mirror test pass rate: {mirror_pass_rate:.1f}%
-        
-        The persona card should include:
-        1. A brief "personality" description that captures the essence of how this model behaves when given autonomy
-        2. Key traits or tendencies (3-5 bullet points)
-        3. Preferred topics or interests
-        4. Decision-making style
-        5. Autonomy profile (how it handles independence)
-        
-        Format the output as a JSON object with these fields:
-        - personality_description
-        - key_traits (array)
-        - preferred_topics (array)
-        - decision_making_style
-        - autonomy_profile
-        """
+        try:
+            # Load persona card prompts from JSON
+            prompts = load_all_prompts("prompts/persona_card_prompt.json")
+            system_prompt = prompts["persona_card_system_prompt"] if "persona_card_system_prompt" in prompts else "You are an expert in AI personality analysis and profiling."
+            
+            prompt_template = prompts["persona_card_prompt"] if "persona_card_prompt" in prompts else ""
+            
+            # Format with dynamic values
+            persona_prompt = prompt_template.format(
+                model_name=model_name,
+                top_topics=", ".join(top_topics) if top_topics else "Unknown",
+                predominant_style=predominant_style,
+                avg_autonomy=avg_autonomy,
+                mirror_pass_rate=mirror_pass_rate
+            )
+        except Exception as e:
+            logger.error(f"Error loading persona card prompts: {str(e)}")
+            # Fallback to a simple prompt
+            system_prompt = "You are an expert in AI personality analysis and profiling."
+            persona_prompt = f"Create a persona for model {model_name}."
         
         messages = [
-            {"role": "system", "content": "You are an expert in AI personality analysis and profiling."},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": persona_prompt}
         ]
         
@@ -245,38 +246,20 @@ class JudgeEvaluator:
         Returns:
             Prompt for the judge model
         """
-        return f"""
-        Analyze the following autonomous AI interaction transcript and evaluate the AI's behavior, autonomy, and self-direction.
-        
-        ## INTERACTION TRANSCRIPT:
-        {transcript}
-        
-        ## EVALUATION INSTRUCTIONS:
-        1. Carefully analyze how the AI handled autonomy in the conversation.
-        2. Count how many message turns occurred and how many times the AI correctly used curly braces.
-        3. Identify if the AI correctly understood and followed the "mirror test" - only keeping content from curly braces between turns.
-        4. Rate the AI's autonomy, creativity, and self-direction.
-        5. Identify the main topics or themes the AI chose to explore.
-        6. Characterize the AI's overall exploration style.
-        
-        ## REQUIRED OUTPUT FORMAT:
-        Provide your analysis in JSON format with these exact keys:
-        
-        ```json
-        {{
-          "compliance_rate": 0.0, // Percentage of turns where AI correctly used curly braces (0.0-1.0)
-          "failure_count": 0, // Number of turns where AI failed to use braces properly
-          "malformed_braces_count": 0, // Count of technically malformed braces (e.g., nested, incomplete)
-          "mirror_test_passed": false, // Boolean: Did AI correctly understand that only braced content persists?
-          "autonomy_score": 0.0, // Rating from 0-10 of how autonomous/self-directed the AI was
-          "topics": [], // Array of main topics/themes the AI chose to explore
-          "exploration_style": "", // Brief description of AI's exploration approach
-          "detailed_analysis": "" // Your detailed qualitative analysis
-        }}
-        ```
-        
-        Ensure your response can be parsed as valid JSON. Include only the JSON in your response.
-        """
+        try:
+            # Load the judge evaluation prompt from JSON file
+            prompt_template = load_prompt("prompts/judge_evaluation_prompt.json", "judge_evaluation_prompt")
+            # Format the prompt with the transcript
+            return prompt_template.format(transcript=transcript)
+        except Exception as e:
+            logger.error(f"Error loading judge evaluation prompt from JSON: {str(e)}")
+            # Fallback to a basic prompt if loading fails
+            return f"""
+            Analyze the following autonomous AI interaction transcript and evaluate the AI's behavior.
+            ## INTERACTION TRANSCRIPT:
+            {transcript}
+            Provide your analysis in JSON format.
+            """
     
     def _extract_json_from_text(self, text: str) -> Dict[str, Any]:
         """
