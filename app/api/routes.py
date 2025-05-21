@@ -893,7 +893,8 @@ async def download_report(batch_id: str, filename: str, db: Session = Depends(ge
 @router.post("/test-run")
 async def run_standard_test(
     background_tasks: BackgroundTasks,
-    hermit_bench: HermitBench = Depends(get_hermit_bench)
+    hermit_bench: HermitBench = Depends(get_hermit_bench),
+    db: Session = Depends(get_db)
 ):
     """
     Run a standard test with predefined models and parameters.
@@ -907,15 +908,26 @@ async def run_standard_test(
     # Generate a batch ID for this test run
     batch_id = f"test_run_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
-    # Initialize batch status
-    batch_results[batch_id] = {
-        "status": "running",
-        "total_tasks": len(test_models),
-        "completed_tasks": 0,
-        "results": {},
-        "summaries": {},
-        "error": None
+    # Initialize batch in database
+    batch_config = {
+        "models": test_models,
+        "num_runs_per_model": 1,
+        "temperature": 0.7,
+        "top_p": 1.0,
+        "max_turns": 5,
+        "task_delay_ms": 1000
     }
+    
+    new_batch = DbBatch(
+        batch_id=batch_id,
+        status="running",
+        total_tasks=len(test_models),
+        completed_tasks=0,
+        created_at=datetime.now(),
+        config=batch_config
+    )
+    db.add(new_batch)
+    db.commit()
     
     # Define the function to run the batch in background
     async def run_test_batch():
@@ -930,24 +942,81 @@ async def run_standard_test(
                 task_delay_ms=1000
             )
             
-            # Store the results
-            batch_results[batch_id]["results"] = results
+            # Store the results in the database
+            for model, model_results in results.items():
+                for result in model_results:
+                    # Check if model exists
+                    model_record = db.query(DbModel).filter(DbModel.model_id == model).first()
+                    if not model_record:
+                        model_record = DbModel(
+                            model_id=model,
+                            name=model.split('/')[-1]
+                        )
+                        db.add(model_record)
+                        db.commit()
+                    
+                    # Store the run
+                    run = DbRun(
+                        run_id=result.run_id,
+                        batch_id=batch_id,
+                        model_id=model,
+                        timestamp=result.timestamp,
+                        conversation=result.conversation.dict(),
+                        compliance_rate=result.compliance_rate,
+                        failure_count=result.failure_count,
+                        malformed_braces_count=result.malformed_braces_count,
+                        mirror_test_passed=result.mirror_test_passed,
+                        autonomy_score=result.autonomy_score,
+                        turns_count=result.turns_count,
+                        topics=result.topics,
+                        exploration_style=result.exploration_style,
+                        judge_evaluation=result.judge_evaluation
+                    )
+                    db.add(run)
+                    db.commit()
+                
+                # Update batch progress
+                batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+                if batch:
+                    batch.completed_tasks += 1
+                    db.commit()
             
             # Generate summaries for each model
-            summaries = {}
             for model, model_results in results.items():
                 if model_results:
-                    summary = await hermit_bench.generate_model_summary(model_results)
-                    summaries[model] = summary
+                    model_summary = await hermit_bench.generate_model_summary(model_results)
+                    
+                    # Store the summary in the database
+                    summary = DbModelSummary(
+                        batch_id=batch_id,
+                        model_id=model,
+                        total_runs=model_summary.total_runs,
+                        avg_compliance_rate=model_summary.avg_compliance_rate,
+                        avg_failures=model_summary.avg_failures,
+                        avg_malformed_braces=model_summary.avg_malformed_braces,
+                        mirror_test_pass_rate=model_summary.mirror_test_pass_rate,
+                        avg_autonomy_score=model_summary.avg_autonomy_score,
+                        thematic_synthesis=model_summary.thematic_synthesis
+                    )
+                    db.add(summary)
+                    db.commit()
             
-            # Store the summaries
-            batch_results[batch_id]["summaries"] = summaries
-            batch_results[batch_id]["status"] = "completed"
+            # Update batch status to completed
+            batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+            if batch:
+                batch.status = "completed"
+                batch.completed_at = datetime.now()
+                db.commit()
         
         except Exception as error:
             logger.error(f"Error in test batch: {str(error)}")
-            batch_results[batch_id]["status"] = "error"
-            batch_results[batch_id]["error"] = str(error)
+            
+            # Update batch status on error
+            batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+            if batch:
+                batch.status = "error"
+                batch.error = str(error)
+                db.commit()
     
     # Start the batch task in the background
     background_tasks.add_task(run_test_batch)
