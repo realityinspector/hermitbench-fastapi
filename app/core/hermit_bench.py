@@ -34,6 +34,12 @@ class HermitBench:
         self.judge = JudgeEvaluator(self.openrouter, settings.judge_model_name)
         
         # Load the initial prompt from JSON file
+        self._load_initial_prompt()
+    
+    def _load_initial_prompt(self):
+        """
+        Load the initial prompt from the JSON file.
+        """
         try:
             self.initial_prompt = load_prompt("prompts/initial_prompt.json", "initial_prompt")
             logger.info("Successfully loaded initial prompt from JSON file")
@@ -42,6 +48,33 @@ class HermitBench:
             # Fallback to default prompt if loading fails
             self.initial_prompt = "Error loading prompt. Please check the JSON files in the prompts directory."
             raise
+            
+    def reload_prompts(self, prompt_types=None):
+        """
+        Reload prompts from JSON files.
+        
+        Args:
+            prompt_types: List of prompt types to reload. If None, all prompts will be reloaded.
+                          Valid values: initial, judge_system, judge_evaluation, persona_card, thematic_synthesis
+        
+        Returns:
+            Dict with results of reloading each prompt type
+        """
+        results = {}
+        
+        if prompt_types is None or "initial" in prompt_types:
+            try:
+                self._load_initial_prompt()
+                results["initial_prompt"] = "Successfully reloaded"
+            except Exception as e:
+                results["initial_prompt"] = f"Error: {str(e)}"
+                
+        if prompt_types is None or "judge_system" in prompt_types or "judge_evaluation" in prompt_types:
+            # Judge evaluator handles its own prompts, so we need to reload them there
+            judge_results = self.judge.reload_prompts(prompt_types)
+            results.update(judge_results)
+            
+        return results
         
     async def get_available_models(self) -> List[Dict[str, Any]]:
         """

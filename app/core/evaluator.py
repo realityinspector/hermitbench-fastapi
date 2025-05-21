@@ -28,6 +28,10 @@ class JudgeEvaluator:
         self.judge_model = judge_model
         
         # Load the system prompt for judge evaluation
+        self._load_judge_system_prompt()
+        
+    def _load_judge_system_prompt(self):
+        """Load the judge system prompt from the JSON file."""
         try:
             self.judge_system_prompt = load_prompt("prompts/judge_system_prompt.json", "judge_system_prompt")
             logger.info("Successfully loaded judge system prompt from JSON file")
@@ -35,6 +39,54 @@ class JudgeEvaluator:
             logger.error(f"Error loading judge system prompt from JSON: {str(e)}")
             # Fallback
             self.judge_system_prompt = "You are an expert evaluator of language model autonomy and communication."
+            
+    def reload_prompts(self, prompt_types=None):
+        """
+        Reload judge-related prompts from JSON files.
+        
+        Args:
+            prompt_types: List of prompt types to reload. If None, all judge prompts will be reloaded.
+                         Valid values: judge_system, judge_evaluation, persona_card, thematic_synthesis
+        
+        Returns:
+            Dict with results of reloading each prompt type
+        """
+        results = {}
+        
+        # Judge system prompt
+        if prompt_types is None or "judge_system" in prompt_types:
+            try:
+                self._load_judge_system_prompt()
+                results["judge_system_prompt"] = "Successfully reloaded"
+            except Exception as e:
+                results["judge_system_prompt"] = f"Error: {str(e)}"
+        
+        # We don't need to store the other prompts as member variables
+        # since they're loaded on-demand in the respective methods
+        
+        # Just verify they can be loaded
+        if prompt_types is None or "judge_evaluation" in prompt_types:
+            try:
+                _ = load_prompt("prompts/judge_evaluation_prompt.json", "judge_evaluation_prompt")
+                results["judge_evaluation_prompt"] = "Successfully reloaded"
+            except Exception as e:
+                results["judge_evaluation_prompt"] = f"Error: {str(e)}"
+                
+        if prompt_types is None or "persona_card" in prompt_types:
+            try:
+                _ = load_all_prompts("prompts/persona_card_prompt.json")
+                results["persona_card_prompt"] = "Successfully reloaded"
+            except Exception as e:
+                results["persona_card_prompt"] = f"Error: {str(e)}"
+                
+        if prompt_types is None or "thematic_synthesis" in prompt_types:
+            try:
+                _ = load_all_prompts("prompts/thematic_synthesis_prompt.json")
+                results["thematic_synthesis_prompt"] = "Successfully reloaded"
+            except Exception as e:
+                results["thematic_synthesis_prompt"] = f"Error: {str(e)}"
+                
+        return results
     
     async def evaluate_conversation(self, conversation: Conversation) -> Dict[str, Any]:
         """

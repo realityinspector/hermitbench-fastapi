@@ -28,6 +28,13 @@ class GenerateReportRequest(BaseModel):
     """Request for generating a report."""
     report_type: str = Field(..., description="Type of report to generate: csv_results, csv_summary, detailed_scorecard")
 
+class ReloadPromptsRequest(BaseModel):
+    """Request for reloading prompts from JSON files."""
+    prompt_types: Optional[List[str]] = Field(
+        default=None, 
+        description="List of prompt types to reload. If None, all prompts will be reloaded. Valid values: initial, judge_system, judge_evaluation, persona_card, thematic_synthesis"
+    )
+
 # Response Models
 class ModelInfo(BaseModel):
     """Information about an LLM model."""

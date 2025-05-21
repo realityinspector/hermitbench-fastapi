@@ -23,7 +23,8 @@ from app.api.models import (
     BatchInteractionResponse,
     ModelSummaryResponse,
     PersonaCardResponse,
-    GenerateReportRequest
+    GenerateReportRequest,
+    ReloadPromptsRequest
 )
 from app.core.hermit_bench import HermitBench
 from app.config import AppSettings
@@ -36,6 +37,40 @@ logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api", tags=["hermitbench"])
+
+# Create admin router for management endpoints
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
+
+@admin_router.post("/reload-prompts", summary="Reload prompt files")
+async def reload_prompts(
+    request: ReloadPromptsRequest,
+    hermit_bench: HermitBench = Depends(get_hermit_bench)
+):
+    """
+    Reload prompt files from disk without restarting the server.
+    
+    This endpoint allows administrators to update prompts and have them take effect immediately.
+    You can specify which prompts to reload, or reload all prompts.
+    
+    Args:
+        request: Request specifying which prompt types to reload
+        
+    Returns:
+        Results of reloading each prompt type
+    """
+    try:
+        results = hermit_bench.reload_prompts(request.prompt_types)
+        return {
+            "status": "success",
+            "message": "Prompts reloaded successfully",
+            "details": results
+        }
+    except Exception as e:
+        logger.error(f"Error reloading prompts: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reloading prompts: {str(e)}"
+        )
 
 def get_settings(request: Request) -> AppSettings:
     """
