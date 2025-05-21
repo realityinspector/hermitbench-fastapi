@@ -121,11 +121,14 @@ class OpenRouterClient:
             Chat completion response
         """
         # The OpenRouter API needs these specific fields in the request
-        # Use claude-3-haiku or claude-3-opus without version dates
+        # Make sure model IDs are properly formatted for OpenRouter
         cleaned_model = model
-        if "claude-3-haiku" in model:
+        # Handle various Claude models
+        if "claude-2.0" in model and not model.startswith("anthropic/"):
+            cleaned_model = "anthropic/claude-2.0"
+        elif "claude-3-haiku" in model and not model.startswith("anthropic/"):
             cleaned_model = "anthropic/claude-3-haiku"
-        elif "claude-3-opus" in model:
+        elif "claude-3-opus" in model and not model.startswith("anthropic/"):
             cleaned_model = "anthropic/claude-3-opus"
             
         data = {
