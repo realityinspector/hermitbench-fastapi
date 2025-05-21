@@ -1,0 +1,76 @@
+~/workspace$ tree -I 'node_modules|attached_assets'
+tree: command not installed. Multiple versions of this command were found in Nix.
+Select one to run (or press Ctrl-C to cancel):
+tree    2.1.1             Command to produce a depth indented directory listing
+Adding tree to .replit
+.
+├── alembic.ini
+├── app
+│   ├── api
+│   │   ├── __init__.py
+│   │   ├── models.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-311.pyc
+│   │   │   ├── models.cpython-311.pyc
+│   │   │   └── routes.cpython-311.pyc
+│   │   └── routes.py
+│   ├── config.py
+│   ├── core
+│   │   ├── evaluator.py
+│   │   ├── hermit_bench.py
+│   │   ├── __init__.py
+│   │   ├── openrouter.py
+│   │   └── __pycache__
+│   │       ├── evaluator.cpython-311.pyc
+│   │       ├── hermit_bench.cpython-311.pyc
+│   │       ├── __init__.cpython-311.pyc
+│   │       └── openrouter.cpython-311.pyc
+│   ├── database.py
+│   ├── db_models.py
+│   ├── factory.py
+│   ├── __init__.py
+│   ├── models.py
+│   ├── __pycache__
+│   │   ├── config.cpython-311.pyc
+│   │   ├── database.cpython-311.pyc
+│   │   ├── db_models.cpython-311.pyc
+│   │   ├── factory.cpython-311.pyc
+│   │   ├── __init__.cpython-311.pyc
+│   │   └── models.cpython-311.pyc
+│   └── utils
+│       ├── helpers.py
+│       └── __init__.py
+├── BUILD-A-USER-AGENT-FLASK-APP.md
+├── detailed_scorecard_batch_668267ad.json
+├── external_tester.sh
+├── generated-icon.png
+├── hermitbench_summary_batch_668267ad.csv
+├── main.py
+├── migrations
+│   ├── env.py
+│   ├── __pycache__
+│   │   └── env.cpython-311.pyc
+│   ├── script.py.mako
+│   └── versions
+│       ├── e33536a68da4_initial_migration.py
+│       ├── __init__.py
+│       └── __pycache__
+│           └── e33536a68da4_initial_migration.cpython-311.pyc
+├── openrouter_models.json
+├── openrouter_test_response.json
+├── persona_cards.json
+├── __pycache__
+│   └── main.cpython-311.pyc
+├── pyproject.toml
+├── README.md
+├── replit.md
+├── results.json
+├── summary_report.csv
+├── test_openrouter.py
+├── tests
+│   ├── __init__.py
+│   ├── test_api.py
+│   └── test_hermit_bench.py
+└── uv.lock
+
+14 directories, 55 files
