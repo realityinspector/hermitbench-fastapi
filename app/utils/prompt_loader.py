@@ -65,6 +65,16 @@ def load_prompt(file_path: str, prompt_key: Optional[str] = None,
             # Try to fix common JSON formatting issues
             logger.warning(f"Invalid JSON in {file_path}. Attempting to fix...")
             
+            # Get fresh content since we're in the exception handler
+            try:
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    file_content = f.read().strip()
+            except Exception as inner_e:
+                logger.error(f"Failed to re-read file in error handler: {str(inner_e)}")
+                if fallback_text is not None:
+                    return fallback_text
+                raise ValueError(f"Internal error processing {file_path}")
+                
             # Try adding missing braces or fixing common issues
             if not file_content.strip().startswith('{'):
                 file_content = '{' + file_content
@@ -154,6 +164,16 @@ def load_all_prompts(file_path: str, fallback_dict: Optional[Dict[str, str]] = N
             except json.JSONDecodeError as e:
                 # Try to fix common JSON formatting issues
                 logger.warning(f"Invalid JSON in {file_path}. Attempting to fix...")
+                
+                # Re-read the file to ensure we have the content
+                try:
+                    with open(full_path, 'r', encoding='utf-8') as f:
+                        file_content = f.read().strip()
+                except Exception as inner_e:
+                    logger.error(f"Failed to re-read file in error handler: {str(inner_e)}")
+                    if fallback_dict is not None:
+                        return fallback_dict
+                    raise ValueError(f"Internal error processing {file_path}")
                 
                 # Try adding missing braces or fixing common issues
                 if not file_content.strip().startswith('{'):
