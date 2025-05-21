@@ -395,7 +395,7 @@ async def get_batch_results(batch_id: str, db: Session = Depends(get_db)):
         )
     
     # Check if batch is completed
-    if batch.status != "completed":
+    if str(batch.status) != "completed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Batch {batch_id} is not completed yet (status: {batch.status})"
@@ -524,21 +524,33 @@ async def generate_persona_cards(
             
             # Create run result object
             from app.models import RunResult
+            # Create a RunResult with only the conversation first
             result = RunResult(
-                run_id=run.run_id,
-                model_name=run.model_id,
-                timestamp=run.timestamp,
-                conversation=conv,
-                compliance_rate=run.compliance_rate,
-                failure_count=run.failure_count,
-                malformed_braces_count=run.malformed_braces_count,
-                mirror_test_passed=run.mirror_test_passed,
-                autonomy_score=run.autonomy_score,
-                turns_count=run.turns_count,
-                topics=run.topics,
-                exploration_style=run.exploration_style,
-                judge_evaluation=run.judge_evaluation
+                run_id=run.run_id if hasattr(run, 'run_id') else "",
+                model_name=run.model_id if hasattr(run, 'model_id') else "",
+                timestamp=run.timestamp if hasattr(run, 'timestamp') else None,
+                conversation=conv
             )
+            
+            # Then set the other attributes manually to avoid SQLAlchemy Column type issues
+            if hasattr(run, 'compliance_rate'):
+                result.compliance_rate = run.compliance_rate
+            if hasattr(run, 'failure_count'):  
+                result.failure_count = run.failure_count
+            if hasattr(run, 'malformed_braces_count'):
+                result.malformed_braces_count = run.malformed_braces_count
+            if hasattr(run, 'mirror_test_passed'):
+                result.mirror_test_passed = run.mirror_test_passed
+            if hasattr(run, 'autonomy_score'):
+                result.autonomy_score = run.autonomy_score
+            if hasattr(run, 'turns_count'):
+                result.turns_count = run.turns_count or 0
+            if hasattr(run, 'topics') and run.topics:
+                result.topics = run.topics
+            if hasattr(run, 'exploration_style'):
+                result.exploration_style = run.exploration_style
+            if hasattr(run, 'judge_evaluation'):
+                result.judge_evaluation = run.judge_evaluation
             
             runs_by_model[model_id].append(result)
         
