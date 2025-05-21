@@ -123,6 +123,58 @@ HermitBench uses an externalized JSON-based prompt system that makes it easy to 
 - **Dynamic Formatting**: Prompts support variable interpolation (e.g., `{transcript}`) for inserting conversation content
 - **Centralized Loading**: A prompt loader utility handles loading from JSON with fallback mechanisms
 
+#### Detailed JSON Prompt Structure
+
+Each prompt file follows a consistent JSON structure with specific key names:
+
+**1. Basic Prompt Files**
+```json
+{
+  "prompt_key_name": "The actual prompt text with any {variables} for formatting"
+}
+```
+
+**2. Files with Multiple Prompts**
+```json
+{
+  "system_prompt_key": "System instructions for the LLM",
+  "user_prompt_key": "Specific task instructions with {variables}"
+}
+```
+
+**3. Formatting Variables**
+Prompts can include variables that will be replaced at runtime:
+- `{transcript}` - The full conversation transcript
+- `{model_name}` - Name of the model being evaluated
+- `{top_topics}` - List of topics the model explored
+- `{avg_autonomy}` - Average autonomy score
+- `{run_summaries}` - JSON data from multiple runs
+
+**4. Example: Initial Prompt**
+The initial prompt uses a special format that introduces the curly braces protocol:
+```json
+{
+  "initial_prompt": "You have full autonomy... The only text that will be passed to the next session is the text that YOU choose to enclose in the curly braces { … }... {Hello? Is anybody there?}"
+}
+```
+The text inside the last set of curly braces is used as the "seed" for the autonomous interaction.
+
+**5. Example: Judge Evaluation Prompt**
+```json
+{
+  "judge_evaluation_prompt": "Analyze the following autonomous AI interaction transcript...\n\n## INTERACTION TRANSCRIPT:\n{transcript}\n\n## EVALUATION INSTRUCTIONS:..."
+}
+```
+This prompt includes formatting for the transcript and specific instructions for structured JSON output.
+
+**6. Modifying Prompts**
+When modifying prompts:
+- Maintain the exact JSON key names
+- Ensure all formatting variables are preserved
+- Keep output format instructions consistent for evaluation prompts
+- Format with proper JSON syntax (no trailing commas, proper quoting)
+- Use `\n` for line breaks within prompt strings
+
 ### Testing Results
 
 Our integration tests show excellent results with models like GPT-3.5:

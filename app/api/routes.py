@@ -28,6 +28,7 @@ from app.api.models import (
 from app.core.hermit_bench import HermitBench
 from app.config import AppSettings
 from app.database import get_db
+from app.utils.prompt_loader import load_prompt, load_all_prompts
 from app.db_models import Model as DbModel, Run as DbRun, ModelSummary as DbModelSummary, Batch as DbBatch, Report as DbReport
 
 # Configure logger
