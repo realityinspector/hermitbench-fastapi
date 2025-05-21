@@ -121,12 +121,18 @@ class OpenRouterClient:
             Chat completion response
         """
         # The OpenRouter API needs these specific fields in the request
+        # Use claude-3-haiku or claude-3-opus without version dates
+        cleaned_model = model
+        if "claude-3-haiku" in model:
+            cleaned_model = "anthropic/claude-3-haiku"
+        elif "claude-3-opus" in model:
+            cleaned_model = "anthropic/claude-3-opus"
+            
         data = {
-            "model": model,
+            "model": cleaned_model,
             "messages": messages,
             "temperature": temperature,
-            "top_p": top_p,
-            "response_format": {"type": "text"}
+            "top_p": top_p
         }
         
         if max_tokens is not None:

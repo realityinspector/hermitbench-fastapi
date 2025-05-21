@@ -917,7 +917,8 @@ async def run_standard_test(
         Results of the test run
     """
     # Standard test configuration - use a small set of models for testing
-    test_models = ["claude-3-haiku-20240307"]
+    # Use a model that's definitely available on OpenRouter
+    test_models = ["openai/gpt-3.5-turbo"]
     
     # Generate a batch ID for this test run
     batch_id = f"test_run_{datetime.now().strftime('%Y%m%d%H%M%S')}"

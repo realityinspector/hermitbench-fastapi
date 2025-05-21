@@ -24,7 +24,7 @@ class AppSettings(BaseSettings):
     default_task_delay_ms: int = 3000
     
     # Judge model settings
-    judge_model_name: str = "claude-3-opus-20240229"
+    judge_model_name: str = "anthropic/claude-3-opus"
     
     # Server settings
     host: str = "0.0.0.0"
