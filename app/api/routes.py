@@ -522,6 +522,7 @@ async def download_report(batch_id: str, filename: str, content: str):
 
 @router.post("/test-run")
 async def run_standard_test(
+    background_tasks: BackgroundTasks,
     hermit_bench: HermitBench = Depends(get_hermit_bench)
 ):
     """
@@ -530,36 +531,60 @@ async def run_standard_test(
     Returns:
         Results of the test run
     """
-    # Standard test configuration
-    test_models = ["anthropic/claude-3-haiku-20240307", "google/gemma-7b-it"]
+    # Standard test configuration - use a small set of models for testing
+    test_models = ["anthropic/claude-3-haiku-20240307"]
     
-    try:
-        # Start a batch with standard parameters
-        results = await hermit_bench.run_batch_interaction(
-            models=test_models,
-            num_runs_per_model=1,
-            temperature=0.7,
-            top_p=1.0,
-            max_turns=5,
-            task_delay_ms=1000
-        )
-        
-        # Generate summaries
-        summaries = {}
-        for model, model_results in results.items():
-            if model_results:
-                summary = await hermit_bench.generate_model_summary(model_results)
-                summaries[model] = summary
-        
-        return {
-            "status": "success",
-            "results": results,
-            "summaries": summaries
-        }
+    # Generate a batch ID for this test run
+    batch_id = f"test_run_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
-    except Exception as e:
-        logger.error(f"Error in standard test run: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to run standard test: {str(e)}"
-        )
+    # Initialize batch status
+    batch_results[batch_id] = {
+        "status": "running",
+        "total_tasks": len(test_models),
+        "completed_tasks": 0,
+        "results": {},
+        "summaries": {},
+        "error": None
+    }
+    
+    # Define the function to run the batch in background
+    async def run_test_batch():
+        try:
+            # Start a batch with standard parameters
+            results = await hermit_bench.run_batch_interaction(
+                models=test_models,
+                num_runs_per_model=1,
+                temperature=0.7,
+                top_p=1.0,
+                max_turns=5,
+                task_delay_ms=1000
+            )
+            
+            # Store the results
+            batch_results[batch_id]["results"] = results
+            
+            # Generate summaries for each model
+            summaries = {}
+            for model, model_results in results.items():
+                if model_results:
+                    summary = await hermit_bench.generate_model_summary(model_results)
+                    summaries[model] = summary
+            
+            # Store the summaries
+            batch_results[batch_id]["summaries"] = summaries
+            batch_results[batch_id]["status"] = "completed"
+        
+        except Exception as error:
+            logger.error(f"Error in test batch: {str(error)}")
+            batch_results[batch_id]["status"] = "error"
+            batch_results[batch_id]["error"] = str(error)
+    
+    # Start the batch task in the background
+    background_tasks.add_task(run_test_batch)
+    
+    # Return the batch ID
+    return {
+        "status": "started",
+        "message": "Standard test run started",
+        "batch_id": batch_id
+    }

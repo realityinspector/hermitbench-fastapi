@@ -30,7 +30,8 @@ class OpenRouterClient:
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://hermitbench.fastapi",  # Required by OpenRouter
+            "HTTP-Referer": "https://hermitbench.replit.app",  # Required by OpenRouter
+            "X-Title": "HermitBench API"  # Identifying information for OpenRouter
         }
     
     @backoff.on_exception(
