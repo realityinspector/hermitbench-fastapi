@@ -286,7 +286,7 @@ async def run_batch(
                 
                 # Generate and store summary for this model
                 if model_results:
-                    summary = await hermit_bench.generate_model_summary(model_name, model_results)
+                    summary = await hermit_bench.generate_model_summary(model_results)
                     db_summary = DbModelSummary(
                         batch_id=batch_id,
                         model_id=model_name,
