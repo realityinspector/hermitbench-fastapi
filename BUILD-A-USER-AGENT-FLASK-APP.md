@@ -23,6 +23,7 @@ The HermitBench API has been fully implemented with the following capabilities:
 - ✅ Batch processing with multiple models
 - ✅ CSV and detailed report generation
 - ✅ Successful test run validation (100% compliance rate)
+- ✅ Externalized prompt system with JSON configuration files
 
 ## Prerequisites
 

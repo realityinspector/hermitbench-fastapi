@@ -11,6 +11,7 @@ HermitBench is a FastAPI-based application for running and evaluating autonomous
 - Track metrics like compliance rate, autonomy score, and more
 - Store results persistently in PostgreSQL database
 - Support for CSV exports and detailed scorecards
+- Externalized prompt system with JSON configuration files
 
 ## Architecture
 
@@ -20,6 +21,7 @@ HermitBench follows a clean architecture pattern with the following components:
 - **Core Services**: Business logic for running benchmark and evaluations
 - **Database Layer**: PostgreSQL with SQLAlchemy ORM for data persistence
 - **Models**: Pydantic models for data validation and SQLAlchemy models for database
+- **Prompts**: JSON-based prompt configuration system for flexible LLM interactions
 
 ## Getting Started
 
@@ -89,6 +91,21 @@ The system evaluates models on:
 - Topics explored during autonomous operation
 - Depth and style of self-directed conversation
 
+### Prompt System
+
+HermitBench uses an externalized JSON-based prompt system that makes it easy to customize and experiment with different prompts:
+
+- **JSON Prompt Files**: All system and user prompts are stored in the `prompts/` directory as JSON files
+- **Prompt Types**:
+  - `initial_prompt.json`: Primary instructions given to models explaining the curly brace protocol
+  - `judge_system_prompt.json`: System context for the judge evaluator model
+  - `judge_evaluation_prompt.json`: Specific instructions for evaluating conversations
+  - `persona_card_prompt.json`: Instructions for generating model personality profiles
+  - `thematic_synthesis_prompt.json`: Guidelines for summarizing model exploration patterns
+
+- **Dynamic Formatting**: Prompts support variable interpolation (e.g., `{transcript}`) for inserting conversation content
+- **Centralized Loading**: A prompt loader utility handles loading from JSON with fallback mechanisms
+
 ### Testing Results
 
 Our integration tests show excellent results with models like GPT-3.5:
@@ -116,3 +133,52 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - FastAPI framework for the modern web API
 - SQLAlchemy and Alembic for database management
 - Pydantic for data validation
+
+
+
+
+# Comparison to the original
+
+
+AI agent report: 
+Dynamic Prompting System Checklist
+Initial Prompt Structure
+✅ Initial prompt includes clear instructions about curly braces usage
+✅ Initial prompt explains the autonomous nature of the conversation
+✅ Initial prompt clarifies that only text inside braces will persist across sessions
+✅ Initial prompt contains an example of curly brace usage
+✅ Initial prompt is now stored in JSON format for easy editing
+
+Curly Bracket Extraction Mechanism
+✅ The _extract_braced_content function correctly uses regex to find text inside curly braces
+✅ The extraction pattern r'{([^{}]*)}' correctly captures content between{and}`
+✅ The function returns all matches found in the text
+✅ Braced content is preserved between turns as specified
+
+Conversation Flow Implementation
+✅ System properly feeds back only the extracted text to the LLM for subsequent turns
+✅ System correctly tracks when no valid curly braces are found
+✅ System adds appropriate system notes about preserved content
+✅ System correctly handles the case when no content in braces is found
+✅ Error handling is in place with appropriate fallback responses
+
+Evaluation Metrics
+✅ Judge evaluation prompt requests analysis of protocol compliance
+✅ The evaluation tracks compliance rate (successful brace usage)
+✅ The evaluation counts protocol failures
+✅ The evaluation tracks malformed braces cases
+✅ The evaluation assesses whether the LLM passed the "mirror test"
+✅ The evaluation analyzes topics explored and exploration style
+✅ All evaluation prompts are stored in JSON format for easy editing
+
+JSON Prompt Implementation
+✅ All system and user prompts are stored in external JSON files
+✅ The prompt loader correctly handles different types of prompts
+✅ Error handling is in place for cases where JSON files can't be loaded
+✅ JSON files maintain proper formatting and syntax
+
+Testing and Validation
+✅ Server startup test confirms that prompt files are loaded correctly
+✅ Test runs confirm the autonomous interaction works as expected
+✅ Error logs are handled appropriately and informatively
+✅ All system components work together seamlessly
