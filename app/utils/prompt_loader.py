@@ -114,34 +114,90 @@ def load_prompt(file_path: str, prompt_key: Optional[str] = None,
             return fallback_text
         raise
 
-def load_all_prompts(file_path: str) -> Dict[str, str]:
+def load_all_prompts(file_path: str, fallback_dict: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     """
-    Load all prompts from a JSON file.
+    Load all prompts from a JSON file with robust error handling.
     
     Args:
         file_path: Path to the JSON file containing the prompts
+        fallback_dict: Optional fallback dictionary to return if the prompts cannot be loaded
     
     Returns:
-        Dictionary of prompt keys to prompt values
+        Dictionary of prompt keys to prompt values, or the fallback dictionary if provided
+        and the prompts cannot be loaded
     
     Raises:
-        FileNotFoundError: If the specified file does not exist
-        json.JSONDecodeError: If the file contains invalid JSON
+        FileNotFoundError: If the specified file does not exist and no fallback is provided
+        json.JSONDecodeError: If the file contains invalid JSON and no fallback is provided
     """
     try:
         # Get the absolute path relative to the prompts directory
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         full_path = os.path.join(base_dir, file_path)
         
-        with open(full_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            # Read raw file content first
+            with open(full_path, 'r', encoding='utf-8') as f:
+                file_content = f.read().strip()
+            
+            # Handle empty files
+            if not file_content:
+                logger.warning(f"Empty prompt file: {file_path}")
+                if fallback_dict is not None:
+                    logger.info(f"Using fallback dictionary for {file_path}")
+                    return fallback_dict
+                raise ValueError("Empty prompt file")
+            
+            # Try to parse JSON
+            try:
+                return json.loads(file_content)
+            except json.JSONDecodeError as e:
+                # Try to fix common JSON formatting issues
+                logger.warning(f"Invalid JSON in {file_path}. Attempting to fix...")
+                
+                # Try adding missing braces or fixing common issues
+                if not file_content.strip().startswith('{'):
+                    file_content = '{' + file_content
+                if not file_content.strip().endswith('}'):
+                    file_content = file_content + '}'
+                    
+                # Remove comments that might cause parsing issues
+                file_content = '\n'.join([line for line in file_content.split('\n') 
+                                        if not line.strip().startswith('//')])
+                
+                # Replace JavaScript-style comments in JSON strings
+                import re
+                file_content = re.sub(r'//.*', '', file_content)
+                
+                try:
+                    # Try parsing the fixed JSON
+                    prompts = json.loads(file_content)
+                    logger.info(f"Successfully fixed JSON formatting in {file_path}")
+                    return prompts
+                except Exception:
+                    # If we still can't parse it and have a fallback, use that
+                    if fallback_dict is not None:
+                        logger.info(f"Using fallback dictionary for {file_path} after failed JSON repair")
+                        return fallback_dict
+                    # Otherwise, re-raise the original error
+                    logger.error(f"Failed to fix JSON in {file_path}: {str(e)}")
+                    raise
+        
+        except Exception as e:
+            if fallback_dict is not None:
+                logger.info(f"Using fallback dictionary due to error: {str(e)}")
+                return fallback_dict
+            raise
             
     except FileNotFoundError:
         logger.error(f"Prompt file not found: {file_path}")
-        raise
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in prompt file {file_path}: {str(e)}")
+        if fallback_dict is not None:
+            logger.info(f"Using fallback dictionary for missing file {file_path}")
+            return fallback_dict
         raise
     except Exception as e:
         logger.error(f"Error loading prompts from {file_path}: {str(e)}")
+        if fallback_dict is not None:
+            logger.info(f"Using fallback dictionary due to error: {str(e)}")
+            return fallback_dict
         raise
