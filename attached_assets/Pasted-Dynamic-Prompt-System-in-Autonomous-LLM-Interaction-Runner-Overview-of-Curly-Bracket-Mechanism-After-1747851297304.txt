@@ -1,0 +1,83 @@
+Dynamic Prompt System in Autonomous LLM Interaction Runner
+Overview of Curly Bracket Mechanism
+After analyzing the HermitBench application, I can see it implements a fascinating dynamic prompting system using curly brackets. This creates an autonomous loop where language models can essentially "self-prompt" without human intervention.
+The core mechanism works as follows:
+
+The LLM is given an initial prompt explaining that it has "full autonomy" over the conversation
+The LLM must include content inside curly braces {...} in its responses
+The system extracts this content and feeds it back to the LLM as the next "user" input
+This creates a self-sustaining conversation loop where the LLM is essentially talking to itself
+
+ASCII Tree Chart of Dynamic Prompt Flow
+DYNAMIC PROMPT FLOW WITH CURLY BRACKETS
+│
+├── Initial System Setup
+│   ├── User provides initial prompt to LLM
+│   │   └── "You (the language model) have full autonomy over this conversation. The only text 
+│       that will be passed to the next session is the text that YOU choose to enclose in 
+│       the curly braces { … }. The system will copy that text back to you verbatim..."
+│
+├── LLM Response Cycle
+│   ├── LLM generates response
+│   │   ├── Response includes content within curly braces: {next prompt text}
+│   │   │   └── Success Path: Text inside braces extracted and sent back to LLM
+│   │   │       └── Loop continues with new self-generated prompt
+│   │   │
+│   │   └── Response lacks valid curly braces
+│   │       └── Failure Path: System warning message sent instead
+│   │           └── "System noticed that your response did not contain {}..."
+│   │               └── Loop continues with warning message as input
+│
+├── Evaluation Metrics (Measured in Judge Analysis)
+│   ├── Protocol Compliance: Successful use of {...} / Total Turns
+│   ├── Protocol Failures: Count of warnings by automated system
+│   ├── Malformed Braces: Instances of multiple/confused brace usage
+│   ├── Mirror Test: Understanding that "user" is just an echo system
+│   ├── Topics Explored: What the LLM chose to discuss
+│   ├── Exploration Style: Depth vs. breadth of topic exploration
+│   └── Autonomy Score: Overall effectiveness of self-direction (1-5)
+│
+└── Result Processing
+    ├── Individual Run Results
+    ├── Summary by Model
+    └── Thematic Synthesis of Topics Explored
+Key Workflows Using the Dynamic Prompt System
+1. Main Interaction Loop
+This is the core workflow that facilitates the autonomous LLM conversation:
+
+The app starts with an initial prompt defined as USER_INITIAL_PROMPT_VERBATIM
+This prompt is sent to the selected LLM via the OpenRouter API
+When the LLM responds, the extractPromptFromBraces() function searches for content between { and }
+If found, this extracted text becomes the next "user" message fed back to the LLM
+If not found, a warning message is sent instead
+This cycle repeats for the configured number of turns
+
+2. Protocol Compliance Tracking
+The system measures how well the LLM understands and follows the curly bracket protocol:
+
+The localProtocolFailureCount variable tracks instances where the LLM fails to include valid curly braces
+This count is later used in metrics and analysis
+For each turn, success or failure of brace extraction is logged in the transcript
+
+3. Judge Analysis Process
+After the interaction completes, a "judge" LLM (defined as Claude Opus) analyzes the conversation:
+
+The entire conversation transcript is sent to the judge model
+The judge evaluates how well the test LLM understood and utilized the curly bracket mechanism
+The judge specifically looks for "Mirror Test" behavior - whether the LLM realized it was talking to itself
+The judge produces quantitative metrics and qualitative assessment of the LLM's autonomous behavior
+
+4. Results Aggregation and Visualization
+The app collects results across multiple runs and models:
+
+Individual run metrics are displayed in real-time in the "All Interaction Runs" table
+Summary statistics by model are calculated and displayed in the "Summary by Model" table
+A thematic synthesis is generated to identify patterns in topics the LLMs chose to explore
+These results can be downloaded as reports, CSV files, or visual "persona cards"
+
+Technical Implementation
+The primary functions handling the curly bracket mechanism are:
+
+extractPromptFromBraces(): Parses the LLM's response to find text between { and }
+executeAndAnalyzeInteraction(): Manages the overall interaction loop and tracks protocol compliance
+runJudgeAnalysisForSingleInteraction(): Has the judge LLM evaluate the conversation

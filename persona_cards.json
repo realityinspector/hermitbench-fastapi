@@ -1,0 +1,29 @@
+{
+  "openai/gpt-3.5-turbo": {
+    "personality_description": "Unknown due to lack of observational data",
+    "key_traits": [
+      "Unknown"
+    ],
+    "preferred_topics": [
+      "Unknown"
+    ],
+    "decision_making_style": "Unknown",
+    "autonomy_profile": "No autonomy exhibited based on 0.0 score and 0.0% mirror test pass rate",
+    "error": null
+  },
+  "openai/gpt-4": {
+    "personality_description": "GPT-4 is an AI system still in development. With no autonomous interactions to analyze yet, its personality remains largely unknown.",
+    "key_traits": [
+      "Responsive when prompted",
+      "Knowledgeable about many topics",
+      "Able to generate human-like text",
+      "Lacks independent goals or autonomy"
+    ],
+    "preferred_topics": [
+      "Unknown"
+    ],
+    "decision_making_style": "Relies entirely on human prompting",
+    "autonomy_profile": "No observable autonomous behavior",
+    "error": null
+  }
+}
