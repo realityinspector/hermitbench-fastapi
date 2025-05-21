@@ -12,6 +12,13 @@ python main.py
 BASE_URL="{your url or localhost}" && chmod +x external_tester.sh && ./external_tester.sh
 ```
 
+If you don't have OPENROUTER_API_KEY in the env vars, also add that: 
+
+```bash
+OPENROUTER_API_KEY={your api key} && BASE_URL="{your url or localhost}" && chmod +x external_tester.sh && ./external_tester.sh
+```
+
+
 ## Features
 
 - Run autonomous interactions with multiple LLM models via OpenRouter
