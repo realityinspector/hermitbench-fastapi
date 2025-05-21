@@ -11,6 +11,7 @@ import csv
 from io import StringIO
 import uuid
 from sqlalchemy.orm import Session
+from app.database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 
@@ -60,7 +61,10 @@ def get_hermit_bench(settings: AppSettings = Depends(get_settings)) -> HermitBen
     return HermitBench(settings)
 
 @router.get("/models", response_model=ModelListResponse)
-async def get_models(hermit_bench: HermitBench = Depends(get_hermit_bench)):
+async def get_models(
+    hermit_bench: HermitBench = Depends(get_hermit_bench),
+    db: Session = Depends(get_db)
+):
     """
     Get a list of available models from OpenRouter.
     
@@ -69,7 +73,41 @@ async def get_models(hermit_bench: HermitBench = Depends(get_hermit_bench)):
     """
     try:
         models = await hermit_bench.get_available_models()
+        
+        # Store models in database if they don't exist
+        for model_data in models:
+            model_id = model_data.get("id")
+            if model_id:
+                # Check if model exists
+                existing_model = db.query(DbModel).filter(DbModel.model_id == model_id).first()
+                if not existing_model:
+                    # Create new model record
+                    db_model = DbModel(
+                        model_id=model_id,
+                        name=model_data.get("name"),
+                        description=model_data.get("description"),
+                        context_length=model_data.get("context_length"),
+                        pricing=model_data.get("pricing")
+                    )
+                    db.add(db_model)
+                else:
+                    # Update existing model
+                    existing_model.name = model_data.get("name", existing_model.name)
+                    existing_model.description = model_data.get("description", existing_model.description)
+                    existing_model.context_length = model_data.get("context_length", existing_model.context_length)
+                    existing_model.pricing = model_data.get("pricing", existing_model.pricing)
+        
+        # Commit changes
+        db.commit()
+        
         return {"models": models}
+    except SQLAlchemyError as db_error:
+        db.rollback()
+        logger.error(f"Database error while processing models: {str(db_error)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(db_error)}"
+        )
     except Exception as e:
         logger.error(f"Error fetching models: {str(e)}")
         raise HTTPException(
@@ -80,7 +118,8 @@ async def get_models(hermit_bench: HermitBench = Depends(get_hermit_bench)):
 @router.post("/run", response_model=InteractionResponse)
 async def run_interaction(
     request: InteractionRequest,
-    hermit_bench: HermitBench = Depends(get_hermit_bench)
+    hermit_bench: HermitBench = Depends(get_hermit_bench),
+    db: Session = Depends(get_db)
 ):
     """
     Run a single autonomous interaction with the specified model.
@@ -99,6 +138,37 @@ async def run_interaction(
             max_turns=request.max_turns
         )
         
+        # Store the result in the database
+        # First make sure the model exists
+        model = db.query(DbModel).filter(DbModel.model_id == result.model_name).first()
+        if not model:
+            # Create model entry if it doesn't exist
+            model = DbModel(
+                model_id=result.model_name,
+                name=result.model_name
+            )
+            db.add(model)
+            db.flush()
+        
+        # Store the run
+        db_run = DbRun(
+            run_id=result.run_id,
+            model_id=result.model_name,
+            timestamp=result.timestamp,
+            conversation=result.conversation.dict(),
+            compliance_rate=result.compliance_rate,
+            failure_count=result.failure_count,
+            malformed_braces_count=result.malformed_braces_count,
+            mirror_test_passed=result.mirror_test_passed,
+            autonomy_score=result.autonomy_score,
+            turns_count=result.turns_count,
+            topics=result.topics,
+            exploration_style=result.exploration_style,
+            judge_evaluation=result.judge_evaluation
+        )
+        db.add(db_run)
+        db.commit()
+        
         return {
             "run_id": result.run_id,
             "model_name": result.model_name,
@@ -114,7 +184,13 @@ async def run_interaction(
             "exploration_style": result.exploration_style,
             "judge_evaluation": result.judge_evaluation
         }
-    
+    except SQLAlchemyError as db_error:
+        db.rollback()
+        logger.error(f"Database error storing interaction result: {str(db_error)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(db_error)}"
+        )
     except Exception as e:
         logger.error(f"Error running interaction: {str(e)}")
         raise HTTPException(
@@ -126,7 +202,8 @@ async def run_interaction(
 async def run_batch(
     request: BatchInteractionRequest,
     background_tasks: BackgroundTasks,
-    hermit_bench: HermitBench = Depends(get_hermit_bench)
+    hermit_bench: HermitBench = Depends(get_hermit_bench),
+    db: Session = Depends(get_db)
 ):
     """
     Start a batch of autonomous interactions with multiple models.
@@ -139,20 +216,30 @@ async def run_batch(
         Batch ID and status information
     """
     # Generate a batch ID
-    batch_id = f"batch_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    batch_id = f"batch_{uuid.uuid4().hex[:8]}"
+    total_tasks = len(request.models) * request.num_runs_per_model
     
-    # Initialize batch status
-    batch_results[batch_id] = {
-        "status": "running",
-        "total_tasks": len(request.models) * request.num_runs_per_model,
-        "completed_tasks": 0,
-        "results": {},
-        "summaries": {},
-        "error": None
-    }
+    # Initialize batch in database
+    db_batch = DbBatch(
+        batch_id=batch_id,
+        status="running",
+        total_tasks=total_tasks,
+        completed_tasks=0,
+        config={
+            "models": request.models,
+            "num_runs_per_model": request.num_runs_per_model,
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "max_turns": request.max_turns,
+            "task_delay_ms": request.task_delay_ms
+        }
+    )
+    db.add(db_batch)
+    db.commit()
     
     # Function to run the batch in the background
     async def run_batch_task():
+        db_session = SessionLocal()
         try:
             # Run the batch
             results = await hermit_bench.run_batch_interaction(
@@ -165,18 +252,67 @@ async def run_batch(
                 progress_callback=lambda completed, total: update_progress(batch_id, completed)
             )
             
-            # Store the results
-            batch_results[batch_id]["results"] = results
+            # Store results in database
+            for result in results:
+                # Make sure model exists
+                model = db_session.query(DbModel).filter(DbModel.model_id == result.model_name).first()
+                if not model:
+                    model = DbModel(
+                        model_id=result.model_name,
+                        name=result.model_name
+                    )
+                    db_session.add(model)
+                    db_session.flush()
+                
+                # Store run
+                db_run = DbRun(
+                    run_id=result.run_id,
+                    batch_id=batch_id,
+                    model_id=result.model_name,
+                    timestamp=result.timestamp,
+                    conversation=result.conversation.dict(),
+                    compliance_rate=result.compliance_rate,
+                    failure_count=result.failure_count,
+                    malformed_braces_count=result.malformed_braces_count,
+                    mirror_test_passed=result.mirror_test_passed,
+                    autonomy_score=result.autonomy_score,
+                    turns_count=result.turns_count,
+                    topics=result.topics,
+                    exploration_style=result.exploration_style,
+                    judge_evaluation=result.judge_evaluation
+                )
+                db_session.add(db_run)
             
             # Generate summaries for each model
-            summaries = {}
-            for model, model_results in results.items():
-                if model_results:
-                    summary = await hermit_bench.generate_model_summary(model_results)
-                    summaries[model] = summary
+            model_results = {}
+            for model_name in request.models:
+                model_runs = [r for r in results if r.model_name == model_name]
+                if model_runs:
+                    model_results[model_name] = model_runs
+                    
+                    # Generate and store summary
+                    summary = await hermit_bench.generate_model_summary(model_name, model_runs)
+                    db_summary = DbModelSummary(
+                        batch_id=batch_id,
+                        model_id=model_name,
+                        total_runs=summary.total_runs,
+                        avg_compliance_rate=summary.avg_compliance_rate,
+                        avg_failures=summary.avg_failures,
+                        avg_malformed_braces=summary.avg_malformed_braces,
+                        mirror_test_pass_rate=summary.mirror_test_pass_rate,
+                        avg_autonomy_score=summary.avg_autonomy_score,
+                        thematic_synthesis=summary.thematic_synthesis
+                    )
+                    db_session.add(db_summary)
             
-            batch_results[batch_id]["summaries"] = summaries
-            batch_results[batch_id]["status"] = "completed"
+            # Update batch status
+            db_batch = db_session.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+            if db_batch:
+                db_batch.status = "completed"
+                db_batch.completed_tasks = total_tasks
+                db_batch.completed_at = datetime.now()
+            
+            db_session.commit()
         
         except Exception as e:
             logger.error(f"Error in batch task: {str(e)}")
