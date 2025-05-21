@@ -230,7 +230,7 @@ async def run_batch(
             "num_runs_per_model": request.num_runs_per_model,
             "temperature": request.temperature,
             "top_p": request.top_p,
-            "max_turns": request.max_turns,
+            "max_runs": request.max_turns,
             "task_delay_ms": request.task_delay_ms
         }
     )
@@ -242,7 +242,7 @@ async def run_batch(
         db_session = SessionLocal()
         try:
             # Run the batch
-            results = await hermit_bench.run_batch_interaction(
+            results_dict = await hermit_bench.run_batch_interaction(
                 models=request.models,
                 num_runs_per_model=request.num_runs_per_model,
                 temperature=request.temperature,
@@ -253,45 +253,40 @@ async def run_batch(
             )
             
             # Store results in database
-            for result in results:
+            for model_name, model_results in results_dict.items():
                 # Make sure model exists
-                model = db_session.query(DbModel).filter(DbModel.model_id == result.model_name).first()
+                model = db_session.query(DbModel).filter(DbModel.model_id == model_name).first()
                 if not model:
                     model = DbModel(
-                        model_id=result.model_name,
-                        name=result.model_name
+                        model_id=model_name,
+                        name=model_name
                     )
                     db_session.add(model)
                     db_session.flush()
                 
-                # Store run
-                db_run = DbRun(
-                    run_id=result.run_id,
-                    batch_id=batch_id,
-                    model_id=result.model_name,
-                    timestamp=result.timestamp,
-                    conversation=result.conversation.dict(),
-                    compliance_rate=result.compliance_rate,
-                    failure_count=result.failure_count,
-                    malformed_braces_count=result.malformed_braces_count,
-                    mirror_test_passed=result.mirror_test_passed,
-                    autonomy_score=result.autonomy_score,
-                    turns_count=result.turns_count,
-                    topics=result.topics,
-                    exploration_style=result.exploration_style,
-                    judge_evaluation=result.judge_evaluation
-                )
-                db_session.add(db_run)
-            
-            # Generate summaries for each model
-            model_results = {}
-            for model_name in request.models:
-                model_runs = [r for r in results if r.model_name == model_name]
-                if model_runs:
-                    model_results[model_name] = model_runs
-                    
-                    # Generate and store summary
-                    summary = await hermit_bench.generate_model_summary(model_name, model_runs)
+                # Store all runs for this model
+                for result in model_results:
+                    db_run = DbRun(
+                        run_id=result.run_id,
+                        batch_id=batch_id,
+                        model_id=model_name,
+                        timestamp=result.timestamp,
+                        conversation=result.conversation.dict(),
+                        compliance_rate=result.compliance_rate,
+                        failure_count=result.failure_count,
+                        malformed_braces_count=result.malformed_braces_count,
+                        mirror_test_passed=result.mirror_test_passed,
+                        autonomy_score=result.autonomy_score,
+                        turns_count=result.turns_count,
+                        topics=result.topics,
+                        exploration_style=result.exploration_style,
+                        judge_evaluation=result.judge_evaluation
+                    )
+                    db_session.add(db_run)
+                
+                # Generate and store summary for this model
+                if model_results:
+                    summary = await hermit_bench.generate_model_summary(model_name, model_results)
                     db_summary = DbModelSummary(
                         batch_id=batch_id,
                         model_id=model_name,
@@ -306,23 +301,40 @@ async def run_batch(
                     db_session.add(db_summary)
             
             # Update batch status
-            db_batch = db_session.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
-            if db_batch:
-                db_batch.status = "completed"
-                db_batch.completed_tasks = total_tasks
-                db_batch.completed_at = datetime.now()
+            batch = db_session.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+            if batch:
+                batch.status = "completed"
+                batch.completed_tasks = total_tasks
+                batch.completed_at = datetime.now()
             
             db_session.commit()
         
         except Exception as e:
             logger.error(f"Error in batch task: {str(e)}")
-            batch_results[batch_id]["status"] = "error"
-            batch_results[batch_id]["error"] = str(e)
+            # Update batch error status in database
+            try:
+                batch = db_session.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+                if batch:
+                    batch.status = "error"
+                    batch.error = str(e)
+                    db_session.commit()
+            except Exception as db_error:
+                logger.error(f"Error updating batch status: {str(db_error)}")
+                db_session.rollback()
+        finally:
+            db_session.close()
     
     # Function to update progress
     def update_progress(batch_id, completed_tasks):
-        if batch_id in batch_results:
-            batch_results[batch_id]["completed_tasks"] = completed_tasks
+        """Update batch progress in database."""
+        try:
+            with SessionLocal() as session:
+                batch = session.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+                if batch:
+                    batch.completed_tasks = completed_tasks
+                    session.commit()
+        except Exception as e:
+            logger.error(f"Error updating batch progress: {str(e)}")
     
     # Start the batch task in the background
     background_tasks.add_task(run_batch_task)
@@ -330,8 +342,9 @@ async def run_batch(
     return {
         "batch_id": batch_id,
         "status": "running",
-        "total_tasks": batch_results[batch_id]["total_tasks"],
-        "completed_tasks": 0
+        "total_tasks": total_tasks,
+        "completed_tasks": 0,
+        "error": None
     }
 
 @router.get("/batch/{batch_id}", response_model=BatchInteractionResponse)
