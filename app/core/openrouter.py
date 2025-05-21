@@ -30,8 +30,9 @@ class OpenRouterClient:
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://hermitbench.replit.app",  # Required by OpenRouter
-            "X-Title": "HermitBench API"  # Identifying information for OpenRouter
+            "HTTP-Referer": "https://replit.com",  # Required by OpenRouter
+            "X-Title": "HermitBench API",  # Identifying information for OpenRouter
+            "User-Agent": "HermitBench/1.0.0"  # Add a User-Agent header
         }
     
     @backoff.on_exception(
@@ -131,11 +132,17 @@ class OpenRouterClient:
         if max_tokens is not None:
             data["max_tokens"] = max_tokens
         
-        # Add additional required fields for OpenRouter API
-        data["transforms"] = []  # Required by OpenRouter for some models
-        
+        # Remove transforms for cleaner requests
+        # Add better error handling with response logging
         try:
-            return await self._make_request("POST", "/chat/completions", data)
+            response = await self._make_request("POST", "/chat/completions", data)
+            return response
+        except httpx.HTTPStatusError as e:
+            error_detail = f"Error {e.response.status_code}: {e.response.text}"
+            logger.error(f"OpenRouter API error for model {model}: {error_detail}")
+            if e.response.status_code == 400:
+                logger.error(f"Request data causing 400 error: {json.dumps(data)}")
+            raise
         except Exception as e:
             logger.error(f"Error getting chat completion from {model}: {str(e)}")
             raise
