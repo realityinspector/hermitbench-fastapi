@@ -1,23 +1,23 @@
 #!/bin/bash
 
-# run with 
-### BASE_URL="{your_url_for_fastapi" && chmod +x external_tester.sh && ./external_tester.sh
+# Run with:
+# BASE_URL="https://f9f4321b-dca0-4787-b26b-75efbd0e20bf-00-rn7at7q9c66e.worf.replit.dev" && ./external_tester.sh.new
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
-# Treat unset variables as an error when substituting.
-# set -u # Commented out as REPORT_PATH_SUFFIX might be empty if API changes
 # Cause a pipeline to return the exit status of the last command in the pipe
 # that returned a non-zero return value.
 set -o pipefail
 
-
 # --- Configuration ---
-# YOU HAVE TO PUT BASE URL IN THE COMMAND SEE LINE 4
-# BASE_URL=""
-POLL_INTERVAL_SECONDS=10 # How often to check batch status
+if [ -z "$BASE_URL" ]; then
+  BASE_URL="https://f9f4321b-dca0-4787-b26b-75efbd0e20bf-00-rn7at7q9c66e.worf.replit.dev"
+fi
+POLL_INTERVAL_SECONDS=5 # How often to check batch status
 
 echo "🧪 Starting HermitBench Test Workflow..."
+echo "----------------------------------------"
+echo "Using API URL: ${BASE_URL}"
 echo "----------------------------------------"
 
 # --- Step 1: Start a batch run ---
@@ -54,46 +54,34 @@ while true; do
   NUM_COMPLETED=$(echo "${STATUS_RESPONSE}" | jq -r .completed_tasks)
   NUM_TOTAL=$(echo "${STATUS_RESPONSE}" | jq -r .total_tasks)
 
-  echo "Current status: ${CURRENT_STATUS} (${NUM_COMPLETED}/${NUM_TOTAL} runs completed)"
+  echo "Current status: ${CURRENT_STATUS} (${NUM_COMPLETED}/${NUM_TOTAL} tasks completed)"
 
   if [[ "${CURRENT_STATUS}" == "completed" ]]; then
     echo "✅ Batch completed!"
     echo "Fetching results..."
     RESULTS_RESPONSE=$(curl -s -X GET "${BASE_URL}/api/batch/${BATCH_ID}/results")
     
-    echo "Results fetched. Processing data..."
+    # Debug output
+    echo "Raw response structure:"
+    echo "${RESULTS_RESPONSE}" | jq 'type'
     
-    # Check if response is an array or an object with items property
-    if echo "${RESULTS_RESPONSE}" | jq -e 'type == "array"' >/dev/null; then
-      # It's an array
-      RESULTS_ARRAY="${RESULTS_RESPONSE}"
-    elif echo "${RESULTS_RESPONSE}" | jq -e 'has("items")' >/dev/null; then
-      # It's an object with items array
-      RESULTS_ARRAY=$(echo "${RESULTS_RESPONSE}" | jq -r '.items')
-    else
-      # Unknown format, show raw data
-      echo "Response format unexpected. Raw data:"
-      echo "${RESULTS_RESPONSE}" | jq '.'
-      break
-    fi
+    # Process results based on structure
+    echo "Processing results..."
+    echo "${RESULTS_RESPONSE}" | jq -r '.' > results.json
+    echo "Saved full results to results.json"
     
-    # Get count of results
-    RESULT_COUNT=$(echo "${RESULTS_ARRAY}" | jq -r 'length')
-    echo "Found ${RESULT_COUNT} result(s)."
-    
+    # Try to extract useful info regardless of format
     echo "Result summary:"
-    echo "${RESULTS_ARRAY}" | jq -c '.[]' | while read -r result; do
-      MODEL=$(echo "${result}" | jq -r '.model_name // "Unknown model"')
-      COMPLIANCE=$(echo "${result}" | jq -r '.compliance_rate // "N/A"')
-      AUTONOMY=$(echo "${result}" | jq -r '.autonomy_score // "N/A"')
-      TURNS=$(echo "${result}" | jq -r '.turns_count // 0')
-      
-      echo "  - Model: ${MODEL}"
-      echo "    Compliance Rate: ${COMPLIANCE}"
-      echo "    Autonomy Score: ${AUTONOMY}"
-      echo "    Turns: ${TURNS}"
-      echo ""
-    done
+    if echo "${RESULTS_RESPONSE}" | jq -e '.[] | select(.model_name != null)' &>/dev/null; then
+      # Direct array of results
+      echo "${RESULTS_RESPONSE}" | jq -r '.[] | "Model: \(.model_name)\nCompliance Rate: \(.compliance_rate)\nAutonomy Score: \(.autonomy_score)\nTurns: \(.turns_count)\n"'
+    elif echo "${RESULTS_RESPONSE}" | jq -e '.results[] | select(.model_name != null)' &>/dev/null; then
+      # Object with results array
+      echo "${RESULTS_RESPONSE}" | jq -r '.results[] | "Model: \(.model_name)\nCompliance Rate: \(.compliance_rate)\nAutonomy Score: \(.autonomy_score)\nTurns: \(.turns_count)\n"'
+    else
+      # Unknown format, show what we got
+      echo "Unable to automatically extract run details. See results.json for full data."
+    fi
     
     break
   elif [[ "${CURRENT_STATUS}" == "failed" || "${CURRENT_STATUS}" == "error" ]]; then
@@ -122,7 +110,6 @@ if [[ -z "$DOWNLOAD_URL_SUFFIX" || "$DOWNLOAD_URL_SUFFIX" == "null" ]]; then
 fi
 echo "✅ CSV summary report generation initiated."
 echo "Download URL Suffix: ${DOWNLOAD_URL_SUFFIX}"
-echo "Response: ${REPORT_URL_RESPONSE}"
 echo "----------------------------------------"
 
 # --- Step 5: Download the generated report ---
@@ -134,39 +121,39 @@ curl -s -X GET "${FULL_DOWNLOAD_URL}" -o "${DOWNLOAD_FILENAME}"
 
 if [[ -f "${DOWNLOAD_FILENAME}" && -s "${DOWNLOAD_FILENAME}" ]]; then
   echo "✅ Report downloaded successfully as ${DOWNLOAD_FILENAME}."
+  echo "Report preview (first 5 lines):"
+  head -n 5 "${DOWNLOAD_FILENAME}"
 else
   echo "❌ Error: Failed to download or the downloaded file is empty."
   # Attempt to show error if the server returned one instead of a file
-  # This assumes the server might return a JSON error if the GET fails for the file
-  cat "${DOWNLOAD_FILENAME}"
+  cat "${DOWNLOAD_FILENAME}" || echo "No error message available"
   exit 1
 fi
 echo "----------------------------------------"
 
-# --- Step 6 (Optional): Generate persona cards ---
-echo "🎭 Step 6: Generating persona cards for BATCH_ID: ${BATCH_ID} (Optional)..."
+# --- Step 6: Generate persona cards ---
+echo "🎭 Step 6: Generating persona cards for BATCH_ID: ${BATCH_ID}..."
 PERSONA_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/batch/${BATCH_ID}/personas")
 
-# Extract model names from persona response
-MODEL_NAMES=$(echo "${PERSONA_RESPONSE}" | jq -r 'keys[]' 2>/dev/null)
+# Save full response for reference
+echo "${PERSONA_RESPONSE}" | jq '.' > persona_cards.json
+echo "Saved full persona data to persona_cards.json"
 
-if [[ -n "$MODEL_NAMES" ]]; then
-  echo "✅ Persona cards successfully generated for models:"
-  for MODEL in ${MODEL_NAMES}; do
-    echo "  - ${MODEL}"
-    PERSONA_DESCRIPTION=$(echo "${PERSONA_RESPONSE}" | jq -r ".[\"${MODEL}\"].personality_description")
-    if [[ -n "$PERSONA_DESCRIPTION" && "$PERSONA_DESCRIPTION" != "null" ]]; then
-      echo "    Personality: ${PERSONA_DESCRIPTION:0:100}..."
-    fi
+# Try to extract useful information
+if echo "${PERSONA_RESPONSE}" | jq -e 'keys' &>/dev/null; then
+  echo "✅ Persona cards generated for models:"
+  echo "${PERSONA_RESPONSE}" | jq -r 'keys[]' | while read -r model; do
+    echo "  - ${model}"
+    DESCRIPTION=$(echo "${PERSONA_RESPONSE}" | jq -r --arg model "$model" '.[$model].personality_description // "N/A"')
+    echo "    Description: ${DESCRIPTION:0:100}..."
   done
 else
-  echo "⚠️ Persona generation may not have returned expected format."
-  echo "Response: ${PERSONA_RESPONSE}"
+  echo "⚠️ Persona data not in expected format. See persona_cards.json for details."
 fi
 echo "----------------------------------------"
 
-# --- Step 7 (Optional): Generate a detailed scorecard ---
-echo "📈 Step 7: Generating detailed scorecard for BATCH_ID: ${BATCH_ID} (Optional)..."
+# --- Step 7: Generate a detailed scorecard ---
+echo "📈 Step 7: Generating detailed scorecard for BATCH_ID: ${BATCH_ID}..."
 SCORECARD_PAYLOAD='{"report_type": "detailed_scorecard"}'
 
 SCORECARD_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/batch/${BATCH_ID}/report" \
@@ -181,9 +168,17 @@ if [[ -n "$DETAILED_SCORECARD_URL_SUFFIX" && "$DETAILED_SCORECARD_URL_SUFFIX" !=
   curl -s -X GET "${FULL_DETAILED_SCORECARD_URL}" -o "${DETAILED_SCORECARD_FILENAME}"
   echo "✅ Detailed scorecard downloaded as ${DETAILED_SCORECARD_FILENAME}."
 else
-  echo "ℹ️ No direct download URL for detailed scorecard in response, or an issue occurred."
+  echo "⚠️ No download URL received for detailed scorecard."
   echo "Response: ${SCORECARD_RESPONSE}"
 fi
 
 echo "----------------------------------------"
 echo "🎉 HermitBench Test Workflow Completed!"
+echo "Files generated:"
+echo "- results.json (Raw API response data)"
+echo "- ${DOWNLOAD_FILENAME} (CSV summary report)"
+echo "- persona_cards.json (Model persona information)"
+if [[ -n "$DETAILED_SCORECARD_URL_SUFFIX" && "$DETAILED_SCORECARD_URL_SUFFIX" != "null" ]]; then
+  echo "- ${DETAILED_SCORECARD_FILENAME} (Detailed scorecard)"
+fi
+echo "----------------------------------------"
