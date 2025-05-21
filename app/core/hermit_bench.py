@@ -122,14 +122,19 @@ Begin your autonomous session. If you want any text to be returned to you in the
                         {"role": "user", "content": braced_content}
                     ]
                 
-                response = await self.openrouter.chat_completion(
-                    model=model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    top_p=top_p
-                )
-                
-                assistant_message = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+                try:
+                    response = await self.openrouter.chat_completion(
+                        model=model_name,
+                        messages=messages,
+                        temperature=temperature,
+                        top_p=top_p
+                    )
+                    
+                    assistant_message = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+                except Exception as e:
+                    logger.error(f"Error in chat completion with model {model_name}: {str(e)}")
+                    # Provide a fallback response in case of API error
+                    assistant_message = f"I apologize for the error. Let me try a different approach. {{I'll attempt to continue our conversation by exploring a new topic.}}"
                 conversation.add_message(MessageRole.ASSISTANT, assistant_message)
                 
                 # Extract content in braces for the next turn
