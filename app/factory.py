@@ -47,4 +47,21 @@ def create_app(settings: AppSettings = None) -> FastAPI:
         """Simple health check endpoint"""
         return {"status": "healthy"}
     
+    @app.get("/")
+    async def index():
+        """API home page with info"""
+        return {
+            "name": "HermitBench API",
+            "version": "1.0.0",
+            "description": "API for running and evaluating autonomous LLM interactions",
+            "documentation": "/docs",
+            "endpoints": [
+                {"path": "/api/models", "description": "Get available models"},
+                {"path": "/api/run", "description": "Run a single interaction"},
+                {"path": "/api/run-batch", "description": "Run a batch of interactions"},
+                {"path": "/api/test-run", "description": "Run a standard test"},
+                {"path": "/health", "description": "Health check endpoint"}
+            ]
+        }
+    
     return app
