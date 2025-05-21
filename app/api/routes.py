@@ -303,9 +303,10 @@ async def run_batch(
             # Update batch status
             batch = db_session.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
             if batch:
-                batch.status = "completed"
-                batch.completed_tasks = total_tasks
-                batch.completed_at = datetime.now()
+                # Use setattr to avoid type-checking issues with SQLAlchemy models
+                setattr(batch, "status", "completed")
+                setattr(batch, "completed_tasks", total_tasks)
+                setattr(batch, "completed_at", datetime.now())
             
             db_session.commit()
         
@@ -315,8 +316,9 @@ async def run_batch(
             try:
                 batch = db_session.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
                 if batch:
-                    batch.status = "error"
-                    batch.error = str(e)
+                    # Use setattr to avoid type-checking issues with SQLAlchemy models
+                    setattr(batch, "status", "error")
+                    setattr(batch, "error", str(e))
                     db_session.commit()
             except Exception as db_error:
                 logger.error(f"Error updating batch status: {str(db_error)}")
@@ -978,7 +980,9 @@ async def run_standard_test(
                 # Update batch progress
                 batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
                 if batch:
-                    batch.completed_tasks += 1
+                    # Use setattr to avoid type-checking issues with SQLAlchemy models
+                    current_tasks = getattr(batch, "completed_tasks", 0)
+                    setattr(batch, "completed_tasks", current_tasks + 1)
                     db.commit()
             
             # Generate summaries for each model
@@ -1004,8 +1008,9 @@ async def run_standard_test(
             # Update batch status to completed
             batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
             if batch:
-                batch.status = "completed"
-                batch.completed_at = datetime.now()
+                # Use setattr to avoid type-checking issues with SQLAlchemy models
+                setattr(batch, "status", "completed")
+                setattr(batch, "completed_at", datetime.now())
                 db.commit()
         
         except Exception as error:
