@@ -25,6 +25,19 @@ task = "shell.exec"
 args = "pip install fastapi uvicorn httpx pydantic backoff python-dotenv && python -m uvicorn main:app --host 0.0.0.0 --port 5000 --reload"
 waitForPort = 5000
 
+[[workflows.workflow]]
+name = "Git Cleanup"
+author = 42064034
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "chmod +x clean-git-then-delete-this-script.sh"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./clean-git-then-delete-this-script.sh"
+
 [deployment]
 run = ["sh", "-c", "pip install fastapi uvicorn httpx pydantic backoff python-dotenv && python -m uvicorn main:app --host 0.0.0.0 --port 5000 --reload"]
 
