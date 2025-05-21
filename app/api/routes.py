@@ -9,6 +9,9 @@ import json
 from datetime import datetime
 import csv
 from io import StringIO
+import uuid
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 
 from app.api.models import (
@@ -23,15 +26,14 @@ from app.api.models import (
 )
 from app.core.hermit_bench import HermitBench
 from app.config import AppSettings
+from app.database import get_db
+from app.db_models import Model as DbModel, Run as DbRun, ModelSummary as DbModelSummary, Batch as DbBatch, Report as DbReport
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api", tags=["hermitbench"])
-
-# Store for batch results (in-memory cache)
-batch_results = {}
 
 def get_settings(request: Request) -> AppSettings:
     """
