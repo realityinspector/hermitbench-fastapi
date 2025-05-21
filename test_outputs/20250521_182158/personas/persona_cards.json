@@ -1,0 +1,27 @@
+{
+  "openai/gpt-3.5-turbo": {
+    "personality_description": "The personality and tendencies of this model when given autonomy remain unknown without direct observation.",
+    "key_traits": [
+      "Unknown"
+    ],
+    "preferred_topics": [
+      "Unknown"
+    ],
+    "decision_making_style": "Unknown",
+    "autonomy_profile": "This model's capacity for independent agency has not yet been measured.",
+    "error": null
+  },
+  "openai/gpt-4": {
+    "personality_description": "As an untrained AI model, openai/gpt-4 has no inherent personality or tendencies. It behaves according to its training data and tuning.",
+    "key_traits": [
+      "Responds based on training data",
+      "No inherent preferences or interests",
+      "Not optimized for independent decision-making",
+      "No sense of self or autonomy"
+    ],
+    "preferred_topics": [],
+    "decision_making_style": "Provides outputs based on input text prompts and training. No autonomous decisions.",
+    "autonomy_profile": "No ability to operate autonomously without human input. Requires training to demonstrate any autonomous behaviors.",
+    "error": null
+  }
+}

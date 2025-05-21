@@ -2,6 +2,238 @@
 
 This document provides step-by-step instructions for building a complete Flask web application that consumes the HermitBench API. The frontend will provide a user-friendly interface for running LLM autonomy benchmarks, viewing results, and generating reports.
 
+# HermitBench Front-end Implementation Plan
+
+## Overview
+
+Based on the provided front-end code and API functionality, I'll outline a comprehensive plan for implementing a front-end application that matches the autonomous LLM evaluator interface while adapting it to work with the HermitBench API.
+
+## Core Functionality Requirements
+
+The HermitBench front-end needs to facilitate the following workflow:
+
+1. Configuration of test parameters
+2. Batch run initiation
+3. Status monitoring of running tests
+4. Results retrieval and visualization
+5. Report generation and export
+6. Persona card generation
+
+## Component Structure
+
+### 1. Configuration Panel
+
+The configuration panel will include:
+- OpenRouter API key input field
+- Model selection dropdown (populated from API)
+- Test parameters:
+  - Temperature setting (0-1 slider)
+  - Top-P setting (0-1 slider)
+  - Number of turns/maximum interactions
+  - Number of runs per model
+  - Task delay between runs (ms)
+- Ability to select multiple models simultaneously (matching batch capabilities in HermitBench)
+
+### 2. Execution Controls
+
+- "Run Selected Models" button to initiate testing
+- "Download Report" button (enabled after completion)
+- "Download Model Cards" button (enabled after completion)
+- Progress indicator showing overall completion percentage
+
+### 3. Status Monitoring Area
+
+- Overall progress bar with percentage indicator
+- Status log area showing current operations
+- Current interaction details area
+- Transcript display for viewing conversation flow
+
+### 4. Results Visualization
+
+- Model cards area for displaying generated persona cards
+- Results table showing:
+  - Model name and run number
+  - Compliance metrics
+  - Autonomy scores
+  - Sophistication ratings
+  - Mirror test results
+- Summary table aggregating results by model
+
+### 5. Advanced Analysis
+
+- Thematic synthesis area (showing topics explored across runs)
+- Judge analysis display for quality assessment
+- Visual cards generated based on model performance
+
+## Implementation Plan
+
+### Phase 1: API Integration
+
+1. Create service modules for all HermitBench API endpoints:
+   - `/api/run-batch` - For initiating batch runs
+   - `/api/batch/{batch_id}` - For checking batch status
+   - `/api/batch/{batch_id}/results` - For retrieving results
+   - `/api/batch/{batch_id}/report` - For generating reports
+   - `/api/batch/{batch_id}/personas` - For creating persona cards
+
+2. Implement authentication handling for the API
+
+3. Create data models to represent:
+   - Batch configuration
+   - Run status
+   - Results format
+   - Persona card structure
+
+### Phase 2: UI Components Development
+
+1. Develop responsive layout matching the provided design
+   - Implement CSS variables for consistent styling
+   - Create card and table components
+   - Design progress indicators and status displays
+
+2. Build the configuration panel
+   - Implement validation for inputs
+   - Add tooltips for guidance
+   - Create model selection interface
+
+3. Create status monitoring components
+   - Real-time progress updates
+   - Log display with color-coding
+   - Transcript viewer with turn-by-turn display
+
+4. Implement results display components
+   - Tables with conditional formatting based on scores
+   - Model card visualization
+   - Export functionality for reports
+
+### Phase 3: Application Logic
+
+1. Configuration management
+   - Validate and prepare batch run parameters
+   - Handle API key storage and security
+
+2. Batch operation workflow
+   - Initiate batch runs with selected models
+   - Poll for status at appropriate intervals
+   - Retrieve and parse results when complete
+
+3. Results processing
+   - Format raw data for display
+   - Calculate aggregate metrics
+   - Generate visualization-ready structures
+
+4. Export functionality
+   - CSV generation for tabular data
+   - Report formatting for download
+   - Model card export as both visual and text formats
+
+### Phase 4: Advanced Features
+
+1. Judge LLM integration
+   - Configure judge model selection
+   - Implement analysis request handling
+   - Process and display analysis results
+
+2. Thematic synthesis
+   - Extract topics from conversation transcripts
+   - Generate synthesis across multiple runs
+   - Display topic patterns and distributions
+
+3. Visual card generation
+   - Create image prompt generation
+   - Implement card layout rendering
+   - Add download capabilities for generated cards
+
+## Integration Points with HermitBench API
+
+1. **Batch Run Initiation**
+   - Front-end collects configuration parameters
+   - Sends structured payload to `/api/run-batch` endpoint
+   - Receives batch_id for tracking
+
+2. **Status Monitoring**
+   - Polls `/api/batch/{batch_id}` at regular intervals
+   - Updates UI with progress information
+   - Transitions to results phase upon completion
+
+3. **Results Retrieval**
+   - Fetches raw results from `/api/batch/{batch_id}/results`
+   - Processes data for visualization
+   - Populates tables and generates metrics
+
+4. **Report Generation**
+   - Requests reports via `/api/batch/{batch_id}/report`
+   - Downloads and processes report formats
+   - Enables export functionality
+
+5. **Persona Generation**
+   - Calls `/api/batch/{batch_id}/personas` to generate model personas
+   - Renders persona cards in the UI
+   - Enables download in multiple formats
+
+## Technical Considerations
+
+1. **State Management**
+   - Maintain batch run status
+   - Store results for multiple models
+   - Preserve configuration between sessions
+
+2. **Error Handling**
+   - API connection failures
+   - Timeout management
+   - Graceful degradation when services unavailable
+
+3. **Performance Optimization**
+   - Efficient polling strategy
+   - Pagination for large result sets
+   - Lazy loading of detailed information
+
+4. **Security**
+   - API key handling
+   - Input sanitization
+   - Secure storage of credentials
+
+## User Experience Enhancements
+
+1. **Responsive Feedback**
+   - Real-time status updates
+   - Clear error messages
+   - Success confirmations
+
+2. **Accessibility**
+   - Semantic HTML structure
+   - Keyboard navigation
+   - Screen reader compatibility
+
+3. **Progressive Enhancement**
+   - Core functionality without advanced features
+   - Graceful fallbacks for older browsers
+   - Mobile-responsive design
+
+## Implementation Timeline
+
+1. **Foundation (step 1)**
+   - API service implementation
+   - Basic UI structure
+   - Configuration panel
+
+2. **Core Functionality (step 2)**
+   - Batch run workflow
+   - Status monitoring
+   - Basic results display
+
+3. **Enhanced Features (step 3)**
+   - Advanced visualization
+   - Report generation
+   - Export functionality
+
+4. **Polish and Refinement (step 4)**
+   - Performance optimization
+   - UI/UX improvements
+   - Testing and bug fixes
+
+This implementation plan provides a comprehensive approach to recreate the functionality demonstrated in the provided front-end code while adapting it to work with the HermitBench API structure.
+
 ## Overview
 
 You'll be creating a Flask application that:

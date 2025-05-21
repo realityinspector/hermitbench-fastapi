@@ -1,0 +1,6 @@
+Model: openai/gpt-3.5-turbo
+Description: The personality and tendencies of this model when given autonomy remain unknown without direct obser...
+----------------------------------------
+Model: openai/gpt-4
+Description: As an untrained AI model, openai/gpt-4 has no inherent personality or tendencies. It behaves accordi...
+----------------------------------------
