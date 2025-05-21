@@ -742,17 +742,35 @@ async def generate_csv_summary(batch_id: str, db: Session) -> Dict[str, str]:
     
     return {"download_url": f"/api/download-report/{batch_id}/{filename}"}
 
-async def generate_detailed_scorecard(batch_id: str) -> Dict[str, str]:
+async def generate_detailed_scorecard(batch_id: str, db: Session) -> Dict[str, str]:
     """
     Generate a detailed scorecard for a batch.
     
     Args:
         batch_id: ID of the batch
+        db: Database session
         
     Returns:
-        JSON content as a string
+        URL to download the generated report
     """
-    batch = batch_results[batch_id]
+    # Check if batch exists
+    batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+    if not batch:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Batch ID {batch_id} not found"
+        )
+    
+    # Get all runs for this batch
+    runs = db.query(DbRun).filter(DbRun.batch_id == batch_id).all()
+    if not runs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No runs found for batch ID {batch_id}"
+        )
+    
+    # Get all summaries for this batch
+    summaries = db.query(DbModelSummary).filter(DbModelSummary.batch_id == batch_id).all()
     
     # Create detailed scorecard
     scorecard = {
@@ -761,49 +779,102 @@ async def generate_detailed_scorecard(batch_id: str) -> Dict[str, str]:
         "models": {}
     }
     
-    # Add model results
-    for model, model_results in batch["results"].items():
+    # Group runs by model
+    runs_by_model = {}
+    for run in runs:
+        model_id = run.model_id
+        if model_id not in runs_by_model:
+            runs_by_model[model_id] = []
+        runs_by_model[model_id].append(run)
+    
+    # Convert summaries to dictionary for easy lookup
+    summaries_dict = {summary.model_id: summary for summary in summaries}
+    
+    # Add model results to scorecard
+    for model_id, model_runs in runs_by_model.items():
         model_data = {
             "runs": [],
-            "summary": batch["summaries"].get(model, {})
+            "summary": {}
         }
         
-        for result in model_results:
+        # Add summary if available
+        if model_id in summaries_dict:
+            summary = summaries_dict[model_id]
+            model_data["summary"] = {
+                "model_name": summary.model_id,
+                "total_runs": summary.total_runs,
+                "avg_compliance_rate": summary.avg_compliance_rate,
+                "avg_failures": summary.avg_failures,
+                "avg_malformed_braces": summary.avg_malformed_braces,
+                "mirror_test_pass_rate": summary.mirror_test_pass_rate,
+                "avg_autonomy_score": summary.avg_autonomy_score,
+                "thematic_synthesis": summary.thematic_synthesis
+            }
+        
+        # Add run data
+        for run in model_runs:
             run_data = {
-                "run_id": result.run_id,
-                "timestamp": result.timestamp.isoformat(),
-                "compliance_rate": result.compliance_rate,
-                "failure_count": result.failure_count,
-                "malformed_braces_count": result.malformed_braces_count,
-                "mirror_test_passed": result.mirror_test_passed,
-                "autonomy_score": result.autonomy_score,
-                "turns_count": result.turns_count,
-                "topics": result.topics,
-                "exploration_style": result.exploration_style,
-                "judge_evaluation": result.judge_evaluation
+                "run_id": run.run_id,
+                "timestamp": run.timestamp.isoformat() if run.timestamp else None,
+                "compliance_rate": run.compliance_rate,
+                "failure_count": run.failure_count,
+                "malformed_braces_count": run.malformed_braces_count,
+                "mirror_test_passed": run.mirror_test_passed,
+                "autonomy_score": run.autonomy_score,
+                "turns_count": run.turns_count,
+                "topics": run.topics,
+                "exploration_style": run.exploration_style,
+                "judge_evaluation": run.judge_evaluation
             }
             model_data["runs"].append(run_data)
         
-        scorecard["models"][model] = model_data
+        scorecard["models"][model_id] = model_data
     
-    return {
-        "content": json.dumps(scorecard, indent=2),
-        "filename": f"hermitbench_scorecard_{batch_id}.json"
-    }
+    # Create a filename for the report
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"scorecard_{batch_id}_{timestamp}.json"
+    
+    # Store the report in the database
+    report = DbReport(
+        batch_id=batch_id,
+        report_type="detailed_scorecard",
+        filename=filename,
+        created_at=datetime.now(),
+        file_path=json.dumps(scorecard, indent=2)  # Store JSON content directly
+    )
+    db.add(report)
+    db.commit()
+    
+    return {"download_url": f"/api/download-report/{batch_id}/{filename}"}
 
-@router.get("/batch/{batch_id}/download-report")
-async def download_report(batch_id: str, filename: str, content: str):
+@router.get("/download-report/{batch_id}/{filename}")
+async def download_report(batch_id: str, filename: str, db: Session = Depends(get_db)):
     """
     Download a generated report.
     
     Args:
         batch_id: ID of the batch
         filename: Name of the file to download
-        content: Content of the report
+        db: Database session
         
     Returns:
         Downloadable file
     """
+    # Find the report in the database
+    report = db.query(DbReport).filter(
+        DbReport.batch_id == batch_id,
+        DbReport.filename == filename
+    ).first()
+    
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report not found for batch ID {batch_id} and filename {filename}"
+        )
+    
+    # Get the content
+    content = report.file_path
+    
     # Determine content type based on file extension
     if filename.endswith(".csv"):
         media_type = "text/csv"
