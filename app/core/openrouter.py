@@ -119,15 +119,20 @@ class OpenRouterClient:
         Returns:
             Chat completion response
         """
+        # The OpenRouter API needs these specific fields in the request
         data = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "top_p": top_p,
+            "response_format": {"type": "text"}
         }
         
         if max_tokens is not None:
             data["max_tokens"] = max_tokens
+        
+        # Add additional required fields for OpenRouter API
+        data["transforms"] = []  # Required by OpenRouter for some models
         
         try:
             return await self._make_request("POST", "/chat/completions", data)
