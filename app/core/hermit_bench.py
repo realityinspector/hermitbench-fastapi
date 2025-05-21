@@ -123,8 +123,13 @@ Begin your autonomous session. If you want any text to be returned to you in the
                     ]
                 
                 try:
+                    # Format the model name properly for OpenRouter - remove any provider prefix
+                    formatted_model_name = model_name
+                    if "/" in model_name:
+                        formatted_model_name = model_name.split("/")[1]
+                        
                     response = await self.openrouter.chat_completion(
-                        model=model_name,
+                        model=formatted_model_name,
                         messages=messages,
                         temperature=temperature,
                         top_p=top_p

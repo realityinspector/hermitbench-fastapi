@@ -917,7 +917,7 @@ async def run_standard_test(
         Results of the test run
     """
     # Standard test configuration - use a small set of models for testing
-    test_models = ["anthropic/claude-3-haiku-20240307"]
+    test_models = ["claude-3-haiku-20240307"]
     
     # Generate a batch ID for this test run
     batch_id = f"test_run_{datetime.now().strftime('%Y%m%d%H%M%S')}"
