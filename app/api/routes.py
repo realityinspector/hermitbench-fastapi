@@ -348,7 +348,7 @@ async def run_batch(
     }
 
 @router.get("/batch/{batch_id}", response_model=BatchInteractionResponse)
-async def get_batch_status(batch_id: str):
+async def get_batch_status(batch_id: str, db: Session = Depends(get_db)):
     """
     Get the status of a batch interaction.
     
@@ -358,24 +358,23 @@ async def get_batch_status(batch_id: str):
     Returns:
         Current status of the batch
     """
-    if batch_id not in batch_results:
+    batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+    if not batch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Batch ID {batch_id} not found"
         )
     
-    batch = batch_results[batch_id]
-    
     return {
         "batch_id": batch_id,
-        "status": batch["status"],
-        "total_tasks": batch["total_tasks"],
-        "completed_tasks": batch["completed_tasks"],
-        "error": batch["error"]
+        "status": batch.status,
+        "total_tasks": batch.total_tasks,
+        "completed_tasks": batch.completed_tasks,
+        "error": batch.error
     }
 
 @router.get("/batch/{batch_id}/results")
-async def get_batch_results(batch_id: str):
+async def get_batch_results(batch_id: str, db: Session = Depends(get_db)):
     """
     Get the results of a completed batch interaction.
     
@@ -385,24 +384,47 @@ async def get_batch_results(batch_id: str):
     Returns:
         Results of the batch
     """
-    if batch_id not in batch_results:
+    # Check if batch exists
+    batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+    if not batch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Batch ID {batch_id} not found"
         )
     
-    batch = batch_results[batch_id]
-    
-    if batch["status"] != "completed":
+    # Check if batch is completed
+    if batch.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Batch {batch_id} is not completed yet (status: {batch['status']})"
+            detail=f"Batch {batch_id} is not completed yet (status: {batch.status})"
         )
     
-    return {"results": batch["results"]}
+    # Get all runs for this batch
+    runs = db.query(DbRun).filter(DbRun.batch_id == batch_id).all()
+    
+    # Convert database models to API response models
+    result_list = []
+    for run in runs:
+        result_list.append({
+            "run_id": run.run_id,
+            "model_name": run.model_id,
+            "timestamp": run.timestamp,
+            "conversation": run.conversation,
+            "compliance_rate": run.compliance_rate,
+            "failure_count": run.failure_count,
+            "malformed_braces_count": run.malformed_braces_count,
+            "mirror_test_passed": run.mirror_test_passed,
+            "autonomy_score": run.autonomy_score,
+            "turns_count": run.turns_count,
+            "topics": run.topics,
+            "exploration_style": run.exploration_style,
+            "judge_evaluation": run.judge_evaluation
+        })
+    
+    return {"results": result_list}
 
 @router.get("/batch/{batch_id}/summaries", response_model=Dict[str, ModelSummaryResponse])
-async def get_batch_summaries(batch_id: str):
+async def get_batch_summaries(batch_id: str, db: Session = Depends(get_db)):
     """
     Get the model summaries for a completed batch interaction.
     
@@ -412,26 +434,50 @@ async def get_batch_summaries(batch_id: str):
     Returns:
         Summaries for each model in the batch
     """
-    if batch_id not in batch_results:
+    # Check if batch exists
+    batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+    if not batch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Batch ID {batch_id} not found"
         )
     
-    batch = batch_results[batch_id]
-    
-    if batch["status"] != "completed":
+    if batch.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Batch {batch_id} is not completed yet (status: {batch['status']})"
+            detail=f"Batch {batch_id} is not completed yet (status: {batch.status})"
         )
     
-    return batch["summaries"]
+    # Get summaries for this batch
+    summaries = db.query(DbModelSummary).filter(DbModelSummary.batch_id == batch_id).all()
+    
+    if not summaries:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No summaries available for batch {batch_id}"
+        )
+    
+    # Convert to response format
+    summaries_dict = {}
+    for summary in summaries:
+        summaries_dict[summary.model_id] = {
+            "model_name": summary.model_id,
+            "total_runs": summary.total_runs,
+            "avg_compliance_rate": summary.avg_compliance_rate,
+            "avg_failures": summary.avg_failures,
+            "avg_malformed_braces": summary.avg_malformed_braces,
+            "mirror_test_pass_rate": summary.mirror_test_pass_rate,
+            "avg_autonomy_score": summary.avg_autonomy_score,
+            "thematic_synthesis": summary.thematic_synthesis
+        }
+    
+    return summaries_dict
 
 @router.post("/batch/{batch_id}/personas", response_model=Dict[str, PersonaCardResponse])
 async def generate_persona_cards(
     batch_id: str,
-    hermit_bench: HermitBench = Depends(get_hermit_bench)
+    hermit_bench: HermitBench = Depends(get_hermit_bench),
+    db: Session = Depends(get_db)
 ):
     """
     Generate persona cards for models in a completed batch.
@@ -442,22 +488,60 @@ async def generate_persona_cards(
     Returns:
         Persona cards for each model
     """
-    if batch_id not in batch_results:
+    # Check if batch exists
+    batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+    if not batch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Batch ID {batch_id} not found"
         )
     
-    batch = batch_results[batch_id]
-    
-    if batch["status"] != "completed":
+    if batch.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Batch {batch_id} is not completed yet (status: {batch['status']})"
+            detail=f"Batch {batch_id} is not completed yet (status: {batch.status})"
         )
     
     try:
-        personas = await hermit_bench.generate_persona_cards(batch["results"])
+        # Get all runs for this batch, grouped by model
+        runs_by_model = {}
+        db_runs = db.query(DbRun).filter(DbRun.batch_id == batch_id).all()
+        
+        for run in db_runs:
+            model_id = run.model_id
+            if model_id not in runs_by_model:
+                runs_by_model[model_id] = []
+            
+            # Convert conversation JSON to Conversation object
+            from app.models import Conversation, MessageRole
+            conv = Conversation()
+            for msg in run.conversation.get('messages', []):
+                role = MessageRole(msg.get('role'))
+                content = msg.get('content', '')
+                conv.add_message(role, content)
+            
+            # Create run result object
+            from app.models import RunResult
+            result = RunResult(
+                run_id=run.run_id,
+                model_name=run.model_id,
+                timestamp=run.timestamp,
+                conversation=conv,
+                compliance_rate=run.compliance_rate,
+                failure_count=run.failure_count,
+                malformed_braces_count=run.malformed_braces_count,
+                mirror_test_passed=run.mirror_test_passed,
+                autonomy_score=run.autonomy_score,
+                turns_count=run.turns_count,
+                topics=run.topics,
+                exploration_style=run.exploration_style,
+                judge_evaluation=run.judge_evaluation
+            )
+            
+            runs_by_model[model_id].append(result)
+        
+        # Generate persona cards
+        personas = await hermit_bench.generate_persona_cards(runs_by_model)
         return personas
     
     except Exception as e:
