@@ -54,10 +54,32 @@ flask-hermitbench/
 │   ├── batch.html
 │   ├── results.html
 │   ├── compare.html
+│   ├── prompts.html
 │   └── reports.html
 ├── config.py
 └── run.py
 ```
+
+## Prompt System Integration
+
+The HermitBench API now features a fully externalized prompt system that stores all system and user prompts in JSON files:
+
+```
+prompts/
+├── initial_prompt.json       # Main instructions for models during autonomous interactions
+├── judge_system_prompt.json  # System context for the judge evaluator
+├── judge_evaluation_prompt.json  # Instructions for evaluating autonomous conversations
+├── persona_card_prompt.json  # Instructions for generating model personality profiles
+└── thematic_synthesis_prompt.json  # Guidelines for summarizing exploration patterns
+```
+
+This externalization offers several advantages:
+1. **Easy Customization**: Edit prompts without modifying code
+2. **Experiment Flexibility**: Try different prompting techniques for benchmark improvements
+3. **Version Control**: Track prompt changes separate from code changes
+4. **Standardization**: Ensure consistent prompt formatting across the application
+
+The Flask frontend should include a dedicated interface for viewing and editing these prompt files, allowing researchers to fine-tune the benchmark process without code changes.
 
 ## Step 1: Project Setup
 
@@ -227,6 +249,36 @@ class HermitBenchClient:
         response.raise_for_status()
         return response.content
     
+    def get_prompt_content(self, prompt_type: str) -> str:
+        """
+        Get the content of a specific prompt file.
+        
+        Args:
+            prompt_type: Type of prompt to retrieve (e.g., 'initial_prompt')
+            
+        Returns:
+            Current prompt content
+        """
+        response = requests.get(f"{self.base_url}/api/prompts/{prompt_type}")
+        response.raise_for_status()
+        return response.json()["content"]
+    
+    def update_prompt(self, prompt_type: str, content: str) -> Dict[str, Any]:
+        """
+        Update a prompt file with new content.
+        
+        Args:
+            prompt_type: Type of prompt to update (e.g., 'initial_prompt')
+            content: New prompt content
+            
+        Returns:
+            Status of the operation
+        """
+        payload = {"content": content}
+        response = requests.put(f"{self.base_url}/api/prompts/{prompt_type}", json=payload)
+        response.raise_for_status()
+        return response.json()
+    
     def run_test(self) -> Dict[str, Any]:
         """
         Run a standard test with predefined models.
@@ -281,6 +333,20 @@ class BatchRunForm(FlaskForm):
                                default=3000)
     submit = SubmitField('Start Batch Run')
 
+class PromptEditForm(FlaskForm):
+    """Form for editing a prompt configuration."""
+    prompt_type = SelectMultipleField('Prompt Type', 
+                                   choices=[
+                                       ('initial_prompt', 'Initial Instruction Prompt'),
+                                       ('judge_system_prompt', 'Judge System Context'),
+                                       ('judge_evaluation_prompt', 'Judge Evaluation Instructions'),
+                                       ('persona_card_prompt', 'Persona Card Generator'),
+                                       ('thematic_synthesis_prompt', 'Thematic Synthesis')
+                                   ],
+                                   validators=[DataRequired()])
+    prompt_content = TextAreaField('Prompt Content', validators=[DataRequired()])
+    submit = SubmitField('Save Prompt')
+
 class ReportForm(FlaskForm):
     """Form for generating reports."""
     report_type = SelectMultipleField('Report Type', 
@@ -299,7 +365,7 @@ Create the routes to handle user requests in `app/routes.py`:
 
 ```python
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
-from app.forms import ApiConfigForm, SingleRunForm, BatchRunForm, ReportForm
+from app.forms import ApiConfigForm, SingleRunForm, BatchRunForm, PromptEditForm, ReportForm
 from app.api_client import HermitBenchClient
 import json
 import os
@@ -426,6 +492,45 @@ def batch_results(batch_id):
                              batch_id=batch_id, results=results, summaries=summaries)
     except Exception as e:
         flash(f"Error fetching batch results: {str(e)}", 'danger')
+        return redirect(url_for('main.index'))
+
+@main.route('/prompts', methods=['GET', 'POST'])
+def manage_prompts():
+    """Page for viewing and editing prompt configurations."""
+    form = PromptEditForm()
+    
+    try:
+        # Get a list of available prompt files
+        api_client = get_api_client()
+        prompts = {
+            'initial_prompt': 'Initial Instruction Prompt',
+            'judge_system_prompt': 'Judge System Context',
+            'judge_evaluation_prompt': 'Judge Evaluation Instructions',
+            'persona_card_prompt': 'Persona Card Generator',
+            'thematic_synthesis_prompt': 'Thematic Synthesis'
+        }
+        
+        if form.validate_on_submit():
+            # Update the selected prompt file
+            prompt_type = form.prompt_type.data[0]
+            prompt_content = form.prompt_content.data
+            
+            # Call the API to update the prompt
+            result = api_client.update_prompt(prompt_type, prompt_content)
+            flash(f"Prompt '{prompts[prompt_type]}' updated successfully", 'success')
+            return redirect(url_for('main.manage_prompts'))
+        
+        # If GET request or form not submitted, show current prompt content
+        if request.args.get('prompt_type'):
+            selected_prompt = request.args.get('prompt_type')
+            prompt_content = api_client.get_prompt_content(selected_prompt)
+            form.prompt_type.data = [selected_prompt]
+            form.prompt_content.data = prompt_content
+        
+        return render_template('prompts.html', title='Manage Prompts', 
+                           form=form, prompts=prompts)
+    except Exception as e:
+        flash(f"Error managing prompts: {str(e)}", 'danger')
         return redirect(url_for('main.index'))
 
 @main.route('/batch/<batch_id>/personas')
