@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# run with BASE_URL={} 
+# run with 
+### BASE_URL="{your_url_for_fastapi" && chmod +x external_tester.sh && ./external_tester.sh
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
@@ -12,7 +13,8 @@ set -o pipefail
 
 
 # --- Configuration ---
-BASE_URL="https://f9f4321b-dca0-4787-b26b-75efbd0e20bf-00-rn7at7q9c66e.worf.replit.dev"
+# YOU HAVE TO PUT BASE URL IN THE COMMAND SEE LINE 4
+# BASE_URL=""
 POLL_INTERVAL_SECONDS=10 # How often to check batch status
 
 echo "🧪 Starting HermitBench Test Workflow..."
@@ -59,16 +61,32 @@ while true; do
     echo "Fetching results..."
     RESULTS_RESPONSE=$(curl -s -X GET "${BASE_URL}/api/batch/${BATCH_ID}/results")
     
-    # Extract and display a summary of the results
-    RESULT_COUNT=$(echo "${RESULTS_RESPONSE}" | jq -r 'length')
-    echo "Results fetched. Found ${RESULT_COUNT} result(s)."
+    echo "Results fetched. Processing data..."
+    
+    # Check if response is an array or an object with items property
+    if echo "${RESULTS_RESPONSE}" | jq -e 'type == "array"' >/dev/null; then
+      # It's an array
+      RESULTS_ARRAY="${RESULTS_RESPONSE}"
+    elif echo "${RESULTS_RESPONSE}" | jq -e 'has("items")' >/dev/null; then
+      # It's an object with items array
+      RESULTS_ARRAY=$(echo "${RESULTS_RESPONSE}" | jq -r '.items')
+    else
+      # Unknown format, show raw data
+      echo "Response format unexpected. Raw data:"
+      echo "${RESULTS_RESPONSE}" | jq '.'
+      break
+    fi
+    
+    # Get count of results
+    RESULT_COUNT=$(echo "${RESULTS_ARRAY}" | jq -r 'length')
+    echo "Found ${RESULT_COUNT} result(s)."
     
     echo "Result summary:"
-    for i in $(seq 0 $((RESULT_COUNT-1))); do
-      MODEL=$(echo "${RESULTS_RESPONSE}" | jq -r ".[$i].model_name")
-      COMPLIANCE=$(echo "${RESULTS_RESPONSE}" | jq -r ".[$i].compliance_rate")
-      AUTONOMY=$(echo "${RESULTS_RESPONSE}" | jq -r ".[$i].autonomy_score")
-      TURNS=$(echo "${RESULTS_RESPONSE}" | jq -r ".[$i].turns_count")
+    echo "${RESULTS_ARRAY}" | jq -c '.[]' | while read -r result; do
+      MODEL=$(echo "${result}" | jq -r '.model_name // "Unknown model"')
+      COMPLIANCE=$(echo "${result}" | jq -r '.compliance_rate // "N/A"')
+      AUTONOMY=$(echo "${result}" | jq -r '.autonomy_score // "N/A"')
+      TURNS=$(echo "${result}" | jq -r '.turns_count // 0')
       
       echo "  - Model: ${MODEL}"
       echo "    Compliance Rate: ${COMPLIANCE}"
