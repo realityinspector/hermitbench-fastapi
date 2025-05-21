@@ -554,7 +554,8 @@ async def generate_persona_cards(
 @router.post("/batch/{batch_id}/report", response_model=Dict[str, str])
 async def generate_report(
     batch_id: str,
-    request: GenerateReportRequest
+    request: GenerateReportRequest,
+    db: Session = Depends(get_db)
 ):
     """
     Generate a report for a completed batch interaction.
@@ -566,46 +567,64 @@ async def generate_report(
     Returns:
         URL to download the report
     """
-    if batch_id not in batch_results:
+    # Check if batch exists
+    batch = db.query(DbBatch).filter(DbBatch.batch_id == batch_id).first()
+    if not batch:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Batch ID {batch_id} not found"
         )
     
-    batch = batch_results[batch_id]
-    
-    if batch["status"] != "completed":
+    if batch.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Batch {batch_id} is not completed yet (status: {batch['status']})"
+            detail=f"Batch {batch_id} is not completed yet (status: {batch.status})"
         )
     
     report_type = request.report_type
     
+    # Check if report already exists in database
+    existing_report = db.query(DbReport).filter(
+        DbReport.batch_id == batch_id,
+        DbReport.report_type == report_type
+    ).first()
+    
+    if existing_report:
+        # Return existing report
+        return {"download_url": f"/api/download-report/{batch_id}/{existing_report.filename}"}
+    
+    # Generate new report
     if report_type == "csv_results":
-        return await generate_csv_results(batch_id)
+        return await generate_csv_results(batch_id, db)
     elif report_type == "csv_summary":
-        return await generate_csv_summary(batch_id)
+        return await generate_csv_summary(batch_id, db)
     elif report_type == "detailed_scorecard":
-        return await generate_detailed_scorecard(batch_id)
+        return await generate_detailed_scorecard(batch_id, db)
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported report type: {report_type}"
         )
 
-async def generate_csv_results(batch_id: str) -> Dict[str, str]:
+async def generate_csv_results(batch_id: str, db: Session) -> Dict[str, str]:
     """
     Generate a CSV table of all runs in a batch.
     
     Args:
         batch_id: ID of the batch
+        db: Database session
         
     Returns:
         CSV content as a string
     """
-    batch = batch_results[batch_id]
-    results = batch["results"]
+    # Retrieve all runs for this batch from the database
+    runs = db.query(DbRun).filter(DbRun.batch_id == batch_id).all()
+    
+    if not runs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No runs found for batch ID {batch_id}"
+        )
     
     # Convert to CSV
     output = StringIO()
@@ -618,40 +637,70 @@ async def generate_csv_results(batch_id: str) -> Dict[str, str]:
         "Turns", "Topics", "Exploration Style", "Date"
     ])
     
+    # Group runs by model
+    runs_by_model = {}
+    for run in runs:
+        model_id = run.model_id
+        if model_id not in runs_by_model:
+            runs_by_model[model_id] = []
+        runs_by_model[model_id].append(run)
+    
     # Write rows
     row_num = 1
-    for model, model_results in results.items():
-        for i, result in enumerate(model_results):
+    for model_id, model_runs in runs_by_model.items():
+        for i, run in enumerate(model_runs):
             writer.writerow([
                 row_num,
-                result.model_name,
+                run.model_id,
                 i + 1,
-                f"{result.compliance_rate * 100:.1f}%" if result.compliance_rate is not None else "N/A",
-                result.failure_count if result.failure_count is not None else "N/A",
-                result.malformed_braces_count if result.malformed_braces_count is not None else "N/A",
-                "Pass" if result.mirror_test_passed else "Fail",
-                f"{result.autonomy_score:.1f}" if result.autonomy_score is not None else "N/A",
-                result.turns_count,
-                ", ".join(result.topics) if result.topics else "N/A",
-                result.exploration_style if result.exploration_style else "N/A",
-                result.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                f"{run.compliance_rate * 100:.1f}%" if run.compliance_rate is not None else "N/A",
+                run.failure_count if run.failure_count is not None else "N/A",
+                run.malformed_braces_count if run.malformed_braces_count is not None else "N/A",
+                "Pass" if run.mirror_test_passed else "Fail",
+                f"{run.autonomy_score:.1f}" if run.autonomy_score is not None else "N/A",
+                run.turns_count,
+                ", ".join(run.topics) if run.topics else "N/A",
+                run.exploration_style if run.exploration_style else "N/A",
+                run.timestamp.strftime("%Y-%m-%d %H:%M:%S") if run.timestamp else "N/A"
             ])
             row_num += 1
+            
+    # Create a filename for the report
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"results_{batch_id}_{timestamp}.csv"
+    
+    # Store the report in the database
+    report = DbReport(
+        batch_id=batch_id,
+        report_type="csv_results",
+        filename=filename,
+        created_at=datetime.now(),
+        file_path=output.getvalue()  # Store CSV content directly
+    )
+    db.add(report)
+    db.commit()
     
     return {"content": output.getvalue(), "filename": f"hermitbench_results_{batch_id}.csv"}
 
-async def generate_csv_summary(batch_id: str) -> Dict[str, str]:
+async def generate_csv_summary(batch_id: str, db: Session) -> Dict[str, str]:
     """
     Generate a CSV summary table for a batch.
     
     Args:
         batch_id: ID of the batch
+        db: Database session
         
     Returns:
-        CSV content as a string
+        URL to download the generated report
     """
-    batch = batch_results[batch_id]
-    summaries = batch["summaries"]
+    # Get all model summaries for this batch
+    summaries = db.query(DbModelSummary).filter(DbModelSummary.batch_id == batch_id).all()
+    
+    if not summaries:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No summaries found for batch ID {batch_id}"
+        )
     
     # Convert to CSV
     output = StringIO()
@@ -665,9 +714,9 @@ async def generate_csv_summary(batch_id: str) -> Dict[str, str]:
     ])
     
     # Write rows
-    for model, summary in summaries.items():
+    for summary in summaries:
         writer.writerow([
-            summary.model_name,
+            summary.model_id,
             summary.total_runs,
             f"{summary.avg_compliance_rate * 100:.1f}%",
             f"{summary.avg_failures:.2f}",
@@ -676,7 +725,22 @@ async def generate_csv_summary(batch_id: str) -> Dict[str, str]:
             f"{summary.avg_autonomy_score:.1f}"
         ])
     
-    return {"content": output.getvalue(), "filename": f"hermitbench_summary_{batch_id}.csv"}
+    # Create a filename for the report
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"summary_{batch_id}_{timestamp}.csv"
+    
+    # Store the report in the database
+    report = DbReport(
+        batch_id=batch_id,
+        report_type="csv_summary",
+        filename=filename,
+        created_at=datetime.now(),
+        file_path=output.getvalue()  # Store CSV content directly
+    )
+    db.add(report)
+    db.commit()
+    
+    return {"download_url": f"/api/download-report/{batch_id}/{filename}"}
 
 async def generate_detailed_scorecard(batch_id: str) -> Dict[str, str]:
     """
