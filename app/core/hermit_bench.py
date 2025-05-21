@@ -62,20 +62,29 @@ class HermitBench:
         """
         results = {}
         
+        # Reload initial prompt
         if prompt_types is None or "initial" in prompt_types:
             try:
                 self._load_initial_prompt()
                 results["initial_prompt"] = "Successfully reloaded"
             except Exception as e:
                 results["initial_prompt"] = f"Error: {str(e)}"
-                
-        if prompt_types is None or "judge_system" in prompt_types or "judge_evaluation" in prompt_types:
-            # Judge evaluator handles its own prompts, so we need to reload them there
-            judge_results = self.judge.reload_prompts(prompt_types)
+        
+        # Reload judge-related prompts
+        judge_prompt_types = None
+        if prompt_types is not None:
+            # Filter just the judge-related prompt types
+            judge_prompt_types = [pt for pt in prompt_types if pt in [
+                "judge_system", "judge_evaluation", "persona_card", "thematic_synthesis"
+            ]]
+            
+        # Only call judge's reload_prompts if we need to reload judge prompts
+        if prompt_types is None or judge_prompt_types:
+            judge_results = self.judge.reload_prompts(judge_prompt_types)
             results.update(judge_results)
             
         return results
-        
+    
     async def get_available_models(self) -> List[Dict[str, Any]]:
         """
         Get a list of available models from OpenRouter.

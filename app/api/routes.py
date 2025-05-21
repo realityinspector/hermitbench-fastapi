@@ -41,6 +41,30 @@ router = APIRouter(prefix="/api", tags=["hermitbench"])
 # Create admin router for management endpoints
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
+def get_settings(request: Request) -> AppSettings:
+    """
+    Get application settings from the request state.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        Application settings
+    """
+    return request.app.state.settings
+
+def get_hermit_bench(settings: AppSettings = Depends(get_settings)) -> HermitBench:
+    """
+    Get a HermitBench instance with the provided settings.
+    
+    Args:
+        settings: Application settings
+        
+    Returns:
+        HermitBench instance
+    """
+    return HermitBench(settings)
+    
 @admin_router.post("/reload-prompts", summary="Reload prompt files")
 async def reload_prompts(
     request: ReloadPromptsRequest,
@@ -71,30 +95,6 @@ async def reload_prompts(
             status_code=500,
             detail=f"Error reloading prompts: {str(e)}"
         )
-
-def get_settings(request: Request) -> AppSettings:
-    """
-    Get application settings from the request state.
-    
-    Args:
-        request: FastAPI request object
-        
-    Returns:
-        Application settings
-    """
-    return request.app.state.settings
-
-def get_hermit_bench(settings: AppSettings = Depends(get_settings)) -> HermitBench:
-    """
-    Get a HermitBench instance with the provided settings.
-    
-    Args:
-        settings: Application settings
-        
-    Returns:
-        HermitBench instance
-    """
-    return HermitBench(settings)
 
 @router.get("/models", response_model=ModelListResponse)
 async def get_models(

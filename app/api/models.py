@@ -107,3 +107,10 @@ class PersonaCardResponse(BaseModel):
     decision_making_style: Optional[str] = None
     autonomy_profile: Optional[str] = None
     error: Optional[str] = None
+    
+class ReloadPromptsRequest(BaseModel):
+    """Request for reloading prompts from JSON files."""
+    prompt_types: Optional[List[str]] = Field(
+        default=None, 
+        description="List of prompt types to reload. If None, all prompts will be reloaded. Valid values: initial, judge_system, judge_evaluation, persona_card, thematic_synthesis"
+    )

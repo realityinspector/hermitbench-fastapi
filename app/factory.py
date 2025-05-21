@@ -3,7 +3,7 @@ Factory module for creating and configuring FastAPI applications.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import router
+from app.api.routes import router, admin_router
 from app.config import AppSettings
 
 def create_app(settings: AppSettings = None) -> FastAPI:
@@ -38,6 +38,9 @@ def create_app(settings: AppSettings = None) -> FastAPI:
     
     # Include API routes
     app.include_router(router)
+    
+    # Include admin routes
+    app.include_router(admin_router)
     
     # Add application state
     app.state.settings = settings
