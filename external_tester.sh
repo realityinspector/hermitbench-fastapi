@@ -1,13 +1,32 @@
 #!/bin/bash
 
 # Run with:
-# BASE_URL="https://f9f4321b-dca0-4787-b26b-75efbd0e20bf-00-rn7at7q9c66e.worf.replit.dev" && ./external_tester.sh.new
+# BASE_URL="https://your-replit-url.replit.dev" && chmod +x external_tester.sh && ./external_tester.sh
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
-# Cause a pipeline to return the exit status of the last command in the pipe
-# that returned a non-zero return value.
-set -o pipefail
+# We're making this script more fault-tolerant, so we're not exiting on first error
+# Instead we'll handle errors more gracefully with proper error messages
+# set -e
+# set -o pipefail
+
+# Function for logging errors
+log_error() {
+  echo "❌ ERROR: $1" >&2
+}
+
+# Function for logging warnings
+log_warning() {
+  echo "⚠️ WARNING: $1" >&2
+}
+
+# Function for logging info
+log_info() {
+  echo "ℹ️ INFO: $1"
+}
+
+# Function for logging success
+log_success() {
+  echo "✅ SUCCESS: $1"
+}
 
 # --- Configuration ---
 if [ -z "$BASE_URL" ]; then
@@ -47,65 +66,177 @@ BATCH_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/run-batch" \
   -H "Content-Type: application/json" \
   -d "${BATCH_RUN_PAYLOAD}")
 
-BATCH_ID=$(echo "${BATCH_RESPONSE}" | jq -r .batch_id)
+# Validate JSON response
+if ! echo "${BATCH_RESPONSE}" | jq -e . >/dev/null 2>&1; then
+  log_error "Invalid JSON response received from batch initialization:"
+  echo "${BATCH_RESPONSE}"
+  echo "${BATCH_RESPONSE}" > "${OUTPUT_DIR}/raw_data/batch_init_response.raw"
+  echo "{\"error\": \"Invalid JSON response\", \"raw_response\": \"${BATCH_RESPONSE}\"}" > "${OUTPUT_DIR}/raw_data/batch_init_response.json"
+  
+  # Ask user if they want to retry or abort
+  echo
+  read -p "Would you like to retry batch initialization? (y/n): " retry_choice
+  if [[ "$retry_choice" =~ ^[Yy]$ ]]; then
+    log_info "Retrying batch initialization..."
+    # Wait a bit before retrying
+    sleep 5
+    BATCH_RESPONSE=$(curl -s -X POST "${BASE_URL}/api/run-batch" \
+      -H "Content-Type: application/json" \
+      -d "${BATCH_RUN_PAYLOAD}")
+  else
+    log_error "Aborting test run due to initialization failure."
+    exit 1
+  fi
+fi
 
-if [[ -z "$BATCH_ID" || "$BATCH_ID" == "null" ]]; then
-  echo "❌ Error: Failed to get BATCH_ID from response."
+# Try to extract batch ID, with additional error handling
+BATCH_ID=$(echo "${BATCH_RESPONSE}" | jq -r '.batch_id // empty')
+
+if [[ -z "$BATCH_ID" ]]; then
+  log_error "Failed to get BATCH_ID from response."
   echo "Response: ${BATCH_RESPONSE}"
+  echo "${BATCH_RESPONSE}" > "${OUTPUT_DIR}/raw_data/batch_init_response.raw"
+  
+  # Save as JSON if possible, otherwise create an error JSON
+  if echo "${BATCH_RESPONSE}" | jq -e . >/dev/null 2>&1; then
+    echo "${BATCH_RESPONSE}" | jq '.' > "${OUTPUT_DIR}/raw_data/batch_init_response.json"
+  else
+    echo "{\"error\": \"Missing batch_id\", \"raw_response\": \"${BATCH_RESPONSE}\"}" > "${OUTPUT_DIR}/raw_data/batch_init_response.json"
+  fi
+  
   exit 1
 fi
-echo "✅ Batch run started. BATCH_ID: ${BATCH_ID}"
+
+log_success "Batch run started. BATCH_ID: ${BATCH_ID}"
 echo "Response: ${BATCH_RESPONSE}"
 
-# Save batch initialization response
-echo "${BATCH_RESPONSE}" | jq '.' > "${OUTPUT_DIR}/raw_data/batch_init_response.json"
-echo "✅ Saved batch initialization response to ${OUTPUT_DIR}/raw_data/batch_init_response.json"
+# Save batch initialization response (safely)
+echo "${BATCH_RESPONSE}" > "${OUTPUT_DIR}/raw_data/batch_init_response.raw"
+if echo "${BATCH_RESPONSE}" | jq -e . >/dev/null 2>&1; then
+  echo "${BATCH_RESPONSE}" | jq '.' > "${OUTPUT_DIR}/raw_data/batch_init_response.json"
+  log_success "Saved batch initialization response to ${OUTPUT_DIR}/raw_data/batch_init_response.json"
+else
+  echo "{\"error\": \"Invalid JSON but batch_id extracted\", \"batch_id\": \"${BATCH_ID}\", \"raw_response\": \"${BATCH_RESPONSE}\"}" > "${OUTPUT_DIR}/raw_data/batch_init_response.json"
+  log_warning "Response wasn't valid JSON. Saved raw response and extracted batch_id."
+fi
 echo "----------------------------------------"
 
 # --- Step 2 & 3: Check batch status and get results when completed ---
 echo "🔄 Step 2 & 3: Monitoring batch status (ID: ${BATCH_ID})..."
 while true; do
   STATUS_RESPONSE=$(curl -s -X GET "${BASE_URL}/api/batch/${BATCH_ID}")
-  CURRENT_STATUS=$(echo "${STATUS_RESPONSE}" | jq -r .status)
-  NUM_COMPLETED=$(echo "${STATUS_RESPONSE}" | jq -r .completed_tasks)
-  NUM_TOTAL=$(echo "${STATUS_RESPONSE}" | jq -r .total_tasks)
+  
+  # Validate JSON response before parsing
+  if ! echo "${STATUS_RESPONSE}" | jq -e . >/dev/null 2>&1; then
+    echo "⚠️ Warning: Invalid JSON response received:"
+    echo "${STATUS_RESPONSE}"
+    echo "Waiting to retry..."
+    sleep "${POLL_INTERVAL_SECONDS}"
+    continue
+  fi
+  
+  # Safely extract values with fallbacks
+  CURRENT_STATUS=$(echo "${STATUS_RESPONSE}" | jq -r '.status // "unknown"')
+  NUM_COMPLETED=$(echo "${STATUS_RESPONSE}" | jq -r '.completed_tasks // 0')
+  NUM_TOTAL=$(echo "${STATUS_RESPONSE}" | jq -r '.total_tasks // 0')
 
   echo "Current status: ${CURRENT_STATUS} (${NUM_COMPLETED}/${NUM_TOTAL} tasks completed)"
 
-  # Save the latest status response
-  echo "${STATUS_RESPONSE}" | jq '.' > "${OUTPUT_DIR}/raw_data/batch_status_latest.json"
+  # Save the latest status response (only if valid JSON)
+  echo "${STATUS_RESPONSE}" > "${OUTPUT_DIR}/raw_data/batch_status_latest.raw"
+  echo "${STATUS_RESPONSE}" | jq -e '.' > "${OUTPUT_DIR}/raw_data/batch_status_latest.json" 2>/dev/null || 
+    echo "{\"error\": \"Invalid JSON response\", \"raw_response\": \"${STATUS_RESPONSE}\"}" > "${OUTPUT_DIR}/raw_data/batch_status_latest.json"
 
   if [[ "${CURRENT_STATUS}" == "completed" ]]; then
-    echo "✅ Batch completed!"
+    log_success "Batch completed!"
     echo "Fetching results..."
     RESULTS_RESPONSE=$(curl -s -X GET "${BASE_URL}/api/batch/${BATCH_ID}/results")
     
-    # Save results response
+    # Store raw results regardless of format
+    echo "${RESULTS_RESPONSE}" > "${OUTPUT_DIR}/raw_data/results.raw"
+    
+    # Validate JSON response
+    if ! echo "${RESULTS_RESPONSE}" | jq -e . >/dev/null 2>&1; then
+      log_error "Invalid JSON response when fetching results:"
+      echo "${RESULTS_RESPONSE}"
+      echo "{\"error\": \"Invalid JSON response\", \"raw_response\": \"${RESULTS_RESPONSE}\"}" > "${OUTPUT_DIR}/raw_data/results.json"
+      echo "⚠️ Batch completed but results could not be parsed as JSON. See raw file for details."
+      
+      # Ask user if they want to retry fetching results
+      read -p "Would you like to retry fetching results? (y/n): " retry_choice
+      if [[ "$retry_choice" =~ ^[Yy]$ ]]; then
+        log_info "Retrying results fetch..."
+        sleep 3
+        RESULTS_RESPONSE=$(curl -s -X GET "${BASE_URL}/api/batch/${BATCH_ID}/results")
+        
+        # Check again
+        if ! echo "${RESULTS_RESPONSE}" | jq -e . >/dev/null 2>&1; then
+          log_error "Still received invalid JSON response. Continuing with other steps."
+          break
+        else
+          log_success "Retry successful, processing results..."
+        fi
+      else
+        log_info "Continuing with other steps..."
+        break
+      fi
+    fi
+    
+    # Save results response as proper JSON
     echo "${RESULTS_RESPONSE}" | jq '.' > "${OUTPUT_DIR}/raw_data/results.json"
-    echo "✅ Saved full results to ${OUTPUT_DIR}/raw_data/results.json"
+    log_success "Saved full results to ${OUTPUT_DIR}/raw_data/results.json"
     
     # Process results based on structure
     echo "Result summary:"
-    if echo "${RESULTS_RESPONSE}" | jq -e '.[] | select(.model_name != null)' &>/dev/null; then
+    if echo "${RESULTS_RESPONSE}" | jq -e '.[] | select(.model_name != null)' &>/dev/null 2>&1; then
       # Direct array of results
-      echo "${RESULTS_RESPONSE}" | jq -r '.[] | "Model: \(.model_name)\nCompliance Rate: \(.compliance_rate)\nAutonomy Score: \(.autonomy_score)\nTurns: \(.turns_count)\n"' > "${OUTPUT_DIR}/reports/summary.txt"
-      echo "${RESULTS_RESPONSE}" | jq -r '.[] | "Model: \(.model_name)\nCompliance Rate: \(.compliance_rate)\nAutonomy Score: \(.autonomy_score)\nTurns: \(.turns_count)\n"'
-    elif echo "${RESULTS_RESPONSE}" | jq -e '.results[] | select(.model_name != null)' &>/dev/null; then
+      echo "${RESULTS_RESPONSE}" | jq -r '.[] | "Model: \(.model_name // "unknown")\nCompliance Rate: \(.compliance_rate // "N/A")\nAutonomy Score: \(.autonomy_score // "N/A")\nTurns: \(.turns_count // "N/A")\n"' > "${OUTPUT_DIR}/reports/summary.txt"
+      echo "${RESULTS_RESPONSE}" | jq -r '.[] | "Model: \(.model_name // "unknown")\nCompliance Rate: \(.compliance_rate // "N/A")\nAutonomy Score: \(.autonomy_score // "N/A")\nTurns: \(.turns_count // "N/A")\n"'
+    elif echo "${RESULTS_RESPONSE}" | jq -e '.results[] | select(.model_name != null)' &>/dev/null 2>&1; then
       # Object with results array
-      echo "${RESULTS_RESPONSE}" | jq -r '.results[] | "Model: \(.model_name)\nCompliance Rate: \(.compliance_rate)\nAutonomy Score: \(.autonomy_score)\nTurns: \(.turns_count)\n"' > "${OUTPUT_DIR}/reports/summary.txt"
-      echo "${RESULTS_RESPONSE}" | jq -r '.results[] | "Model: \(.model_name)\nCompliance Rate: \(.compliance_rate)\nAutonomy Score: \(.autonomy_score)\nTurns: \(.turns_count)\n"'
+      echo "${RESULTS_RESPONSE}" | jq -r '.results[] | "Model: \(.model_name // "unknown")\nCompliance Rate: \(.compliance_rate // "N/A")\nAutonomy Score: \(.autonomy_score // "N/A")\nTurns: \(.turns_count // "N/A")\n"' > "${OUTPUT_DIR}/reports/summary.txt"
+      echo "${RESULTS_RESPONSE}" | jq -r '.results[] | "Model: \(.model_name // "unknown")\nCompliance Rate: \(.compliance_rate // "N/A")\nAutonomy Score: \(.autonomy_score // "N/A")\nTurns: \(.turns_count // "N/A")\n"'
+    elif echo "${RESULTS_RESPONSE}" | jq -e '.runs[] | select(.model_name != null)' &>/dev/null 2>&1; then
+      # Object with runs array (another possible format)
+      echo "${RESULTS_RESPONSE}" | jq -r '.runs[] | "Model: \(.model_name // "unknown")\nCompliance Rate: \(.compliance_rate // "N/A")\nAutonomy Score: \(.autonomy_score // "N/A")\nTurns: \(.turns_count // "N/A")\n"' > "${OUTPUT_DIR}/reports/summary.txt"
+      echo "${RESULTS_RESPONSE}" | jq -r '.runs[] | "Model: \(.model_name // "unknown")\nCompliance Rate: \(.compliance_rate // "N/A")\nAutonomy Score: \(.autonomy_score // "N/A")\nTurns: \(.turns_count // "N/A")\n"'
     else
       # Unknown format, show what we got
-      echo "Unable to automatically extract run details. See ${OUTPUT_DIR}/raw_data/results.json for full data."
+      log_warning "Unable to automatically extract run details. See ${OUTPUT_DIR}/raw_data/results.json for full data."
+      # At least save the raw JSON as our summary
+      echo "Results received but in unexpected format:" > "${OUTPUT_DIR}/reports/summary.txt"
+      echo "${RESULTS_RESPONSE}" | jq '.' >> "${OUTPUT_DIR}/reports/summary.txt"
     fi
     
     break
   elif [[ "${CURRENT_STATUS}" == "failed" || "${CURRENT_STATUS}" == "error" ]]; then
-    echo "❌ Error: Batch run failed or errored."
+    log_error "Batch run failed or errored."
     echo "Status Response: ${STATUS_RESPONSE}"
-    # Save the error status
-    echo "${STATUS_RESPONSE}" | jq '.' > "${OUTPUT_DIR}/raw_data/batch_status_error.json"
-    exit 1
+    
+    # Save the raw response first
+    echo "${STATUS_RESPONSE}" > "${OUTPUT_DIR}/raw_data/batch_status_error.raw"
+    
+    # Save structured error data if possible
+    if echo "${STATUS_RESPONSE}" | jq -e . >/dev/null 2>&1; then
+      echo "${STATUS_RESPONSE}" | jq '.' > "${OUTPUT_DIR}/raw_data/batch_status_error.json"
+    else
+      echo "{\"error\": \"Batch failed but response was not valid JSON\", \"raw_response\": \"${STATUS_RESPONSE}\"}" > "${OUTPUT_DIR}/raw_data/batch_status_error.json"
+    fi
+    
+    # Extract error message if present
+    ERROR_MSG=$(echo "${STATUS_RESPONSE}" | jq -r '.error // "Unknown error"' 2>/dev/null)
+    log_error "Error details: ${ERROR_MSG}"
+    
+    # Ask if user wants to continue with other steps or abort
+    echo
+    read -p "Would you like to continue with report generation anyway? (y/n): " continue_choice
+    if [[ "$continue_choice" =~ ^[Yy]$ ]]; then
+      log_warning "Continuing with report generation despite batch failure."
+      break
+    else
+      log_error "Aborting test run due to batch failure."
+      exit 1
+    fi
   fi
   sleep "${POLL_INTERVAL_SECONDS}"
 done
