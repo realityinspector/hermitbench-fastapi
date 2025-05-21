@@ -6,6 +6,7 @@ import uvicorn
 import logging
 from app.factory import create_app
 from app.config import AppSettings
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(
@@ -16,11 +17,21 @@ logging.basicConfig(
     ]
 )
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Check for OpenRouter API Key
+api_key = os.getenv("OPENROUTER_API_KEY", "")
+if not api_key:
+    logging.warning("OPENROUTER_API_KEY not found in environment variables or Replit Secrets.")
+    logging.warning("Note: Make sure to set it using Replit Secrets to use the API functionality.")
+
 # Create app settings with environment variables
+port = int(os.getenv("PORT", "5000"))  # Default to port 5000 for Replit
 settings = AppSettings(
-    openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+    openrouter_api_key=api_key,
     host=os.getenv("HOST", "0.0.0.0"),
-    port=int(os.getenv("PORT", "8000"))
+    port=port
 )
 
 # Create the application
@@ -32,5 +43,5 @@ if __name__ == "__main__":
         "main:app",
         host=settings.host,
         port=settings.port,
-        reload=False
+        reload=True  # Enable hot reloading for development
     )

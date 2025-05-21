@@ -5,6 +5,10 @@ from typing import Optional, Dict, Any, List
 import os
 from pydantic import validator
 from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class AppSettings(BaseSettings):
     """Application configuration settings."""
